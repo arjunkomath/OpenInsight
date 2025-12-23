@@ -1,36 +1,36 @@
-import {SQL} from 'bun';
+import {createConnection, parseConnectionString} from './DbConnector.js';
 import {createOpenRouterClient} from './OpenRouterClient.js';
 
-async function getSchema(sql, dbType) {
+async function getSchema(conn, dbType) {
 	if (dbType === 'postgres' || dbType === 'postgresql') {
-		const tables = await sql`
+		const tables = await conn.query(`
 			SELECT table_name, column_name, data_type
 			FROM information_schema.columns
 			WHERE table_schema = 'public'
 			ORDER BY table_name, ordinal_position
-		`;
+		`);
 		return formatSchema(tables);
 	}
 
 	if (dbType === 'mysql') {
-		const tables = await sql`
+		const tables = await conn.query(`
 			SELECT table_name, column_name, data_type
 			FROM information_schema.columns
 			WHERE table_schema = DATABASE()
 			ORDER BY table_name, ordinal_position
-		`;
+		`);
 		return formatSchema(tables);
 	}
 
 	if (dbType === 'sqlite') {
-		const tableList = await sql`
+		const tableList = await conn.query(`
 			SELECT name FROM sqlite_master
 			WHERE type='table' AND name NOT LIKE 'sqlite_%'
-		`;
+		`);
 
 		const schema = {};
 		for (const {name} of tableList) {
-			const columns = await sql.unsafe(`PRAGMA table_info(${name})`);
+			const columns = await conn.query(`PRAGMA table_info(${name})`);
 			schema[name] = columns.map(c => ({
 				column: c.name,
 				type: c.type,
@@ -58,19 +58,19 @@ function formatSchema(rows) {
 }
 
 export async function fetchSchema(connectionString, dbType) {
-	let sql;
+	let conn;
 	try {
-		sql = new SQL(connectionString);
+		conn = await createConnection(connectionString);
 	} catch (error) {
 		return {schema: null, error: `Failed to connect: ${error.message}`};
 	}
 
 	try {
-		const schema = await getSchema(sql, dbType);
-		await sql.close();
+		const schema = await getSchema(conn, dbType);
+		await conn.close();
 		return {schema, error: null};
 	} catch (error) {
-		await sql.close();
+		await conn.close();
 		return {schema: null, error: `Failed to fetch schema: ${error.message}`};
 	}
 }
@@ -153,9 +153,9 @@ export async function executeQuery(
 			}
 		}
 
-		let sql;
+		let conn;
 		try {
-			sql = new SQL(connectionString);
+			conn = await createConnection(connectionString);
 		} catch (error) {
 			return {
 				error: `Failed to connect: ${error.message}`,
@@ -166,13 +166,13 @@ export async function executeQuery(
 
 		try {
 			log('Executing query...');
-			const data = await sql.unsafe(currentSql);
+			const data = await conn.query(currentSql);
 			const rows = Array.from(data);
 			log(`Query returned ${rows.length} rows`);
-			await sql.close();
+			await conn.close();
 			return {error: null, sql: currentSql, data: rows};
 		} catch (error) {
-			await sql.close();
+			await conn.close();
 			lastError = error.message;
 			log(`Query error: ${lastError}`);
 			if (attempt === maxRetries) {

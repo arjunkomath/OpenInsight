@@ -1,4 +1,6 @@
-import {SQL} from 'bun';
+import pg from 'pg';
+import mysql from 'mysql2/promise';
+import Database from 'better-sqlite3';
 
 export function parseConnectionString(connectionString) {
 	if (
@@ -64,6 +66,16 @@ export function validateConnectionString(connectionString) {
 	return parseConnectionString(connectionString);
 }
 
+function getSqlitePath(connectionString) {
+	if (connectionString.startsWith('sqlite://')) {
+		return connectionString.slice(9);
+	}
+	if (connectionString.startsWith('file://')) {
+		return connectionString.slice(7);
+	}
+	return connectionString;
+}
+
 export async function testConnection(connectionString) {
 	const validation = validateConnectionString(connectionString);
 	if (!validation.isValid) {
@@ -71,9 +83,21 @@ export async function testConnection(connectionString) {
 	}
 
 	try {
-		const sql = new SQL(connectionString);
-		await sql`SELECT 1`;
-		await sql.close();
+		if (validation.protocol === 'postgres') {
+			const client = new pg.Client({connectionString});
+			await client.connect();
+			await client.query('SELECT 1');
+			await client.end();
+		} else if (validation.protocol === 'mysql') {
+			const connection = await mysql.createConnection(connectionString);
+			await connection.query('SELECT 1');
+			await connection.end();
+		} else if (validation.protocol === 'sqlite') {
+			const dbPath = getSqlitePath(connectionString);
+			const db = new Database(dbPath);
+			db.prepare('SELECT 1').get();
+			db.close();
+		}
 		return {success: true};
 	} catch (error) {
 		return {
@@ -83,11 +107,87 @@ export async function testConnection(connectionString) {
 	}
 }
 
-export function createConnection(connectionString) {
+class PostgresConnection {
+	constructor(connectionString) {
+		this.client = new pg.Client({connectionString});
+		this.connected = false;
+	}
+
+	async connect() {
+		if (!this.connected) {
+			await this.client.connect();
+			this.connected = true;
+		}
+	}
+
+	async query(sql) {
+		await this.connect();
+		const result = await this.client.query(sql);
+		return result.rows;
+	}
+
+	async close() {
+		if (this.connected) {
+			await this.client.end();
+			this.connected = false;
+		}
+	}
+}
+
+class MySQLConnection {
+	constructor(connectionString) {
+		this.connectionString = connectionString;
+		this.connection = null;
+	}
+
+	async connect() {
+		if (!this.connection) {
+			this.connection = await mysql.createConnection(this.connectionString);
+		}
+	}
+
+	async query(sql) {
+		await this.connect();
+		const [rows] = await this.connection.query(sql);
+		return rows;
+	}
+
+	async close() {
+		if (this.connection) {
+			await this.connection.end();
+			this.connection = null;
+		}
+	}
+}
+
+class SQLiteConnection {
+	constructor(connectionString) {
+		const dbPath = getSqlitePath(connectionString);
+		this.db = new Database(dbPath);
+	}
+
+	async query(sql) {
+		return this.db.prepare(sql).all();
+	}
+
+	async close() {
+		this.db.close();
+	}
+}
+
+export async function createConnection(connectionString) {
 	const validation = validateConnectionString(connectionString);
 	if (!validation.isValid) {
 		throw new Error(validation.error);
 	}
 
-	return new SQL(connectionString);
+	if (validation.protocol === 'postgres') {
+		return new PostgresConnection(connectionString);
+	} else if (validation.protocol === 'mysql') {
+		return new MySQLConnection(connectionString);
+	} else if (validation.protocol === 'sqlite') {
+		return new SQLiteConnection(connectionString);
+	}
+
+	throw new Error('Unsupported database type');
 }
