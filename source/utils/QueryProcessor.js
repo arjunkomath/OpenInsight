@@ -109,7 +109,7 @@ export async function generateQuery(
 		return {error: result.error, sql: null};
 	}
 
-	const sql = cleanSqlResponse(result.sql);
+	const sql = result.sql;
 
 	if (!isReadOnlyQuery(sql)) {
 		return {error: 'Only SELECT queries are allowed', sql};
@@ -142,7 +142,7 @@ export async function executeQuery(
 			if (result.error) {
 				return {error: result.error, sql: currentSql, data: null};
 			}
-			currentSql = cleanSqlResponse(result.sql);
+			currentSql = result.sql;
 
 			if (!isReadOnlyQuery(currentSql)) {
 				return {
@@ -186,19 +186,6 @@ export async function executeQuery(
 	}
 
 	return {error: 'Unexpected error', sql: currentSql, data: null};
-}
-
-function cleanSqlResponse(sql) {
-	let cleaned = sql.trim();
-	if (cleaned.startsWith('```sql')) {
-		cleaned = cleaned.slice(6);
-	} else if (cleaned.startsWith('```')) {
-		cleaned = cleaned.slice(3);
-	}
-	if (cleaned.endsWith('```')) {
-		cleaned = cleaned.slice(0, -3);
-	}
-	return cleaned.trim();
 }
 
 function isReadOnlyQuery(sql) {

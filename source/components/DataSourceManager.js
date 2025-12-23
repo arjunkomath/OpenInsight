@@ -19,7 +19,7 @@ export default function DataSourceManager({
 	const [isValidating, setIsValidating] = useState(false);
 	const [error, setError] = useState(null);
 	const {stdout} = useStdout();
-	const terminalHeight = stdout?.rows || 24;
+	const [terminalHeight] = useState(() => stdout?.rows || 24);
 
 	const handleAddSource = async () => {
 		if (!connectionString.trim() || isValidating) return;
@@ -105,18 +105,20 @@ export default function DataSourceManager({
 		}
 
 		const items = sources.map(source => ({
+			key: source.id,
 			label: `  ${source.name} (${source.type})`,
 			value: source,
 		}));
 
 		items.push({
+			key: 'add',
 			label: '+ Add new data source',
 			value: 'add',
 		});
 
 		return (
-			<Box flexDirection="column" height={terminalHeight}>
-				<Box paddingX={1} paddingY={1}>
+			<Box flexDirection="column" paddingY={1}>
+				<Box paddingX={1}>
 					<Text bold color="cyan">
 						OPEN
 					</Text>
@@ -125,7 +127,7 @@ export default function DataSourceManager({
 					</Text>
 				</Box>
 
-				<Box flexDirection="column" flexGrow={1} paddingX={1}>
+				<Box flexDirection="column" paddingX={1} marginTop={1}>
 					<Text color="yellow" bold>
 						Select a data source:
 					</Text>
@@ -146,7 +148,7 @@ export default function DataSourceManager({
 					</Box>
 				</Box>
 
-				<Box paddingX={1} paddingBottom={1} flexDirection="column" gap={1}>
+				<Box paddingX={1} marginTop={1} flexDirection="column" gap={1}>
 					<Alert variant="warning">
 						AI can make mistakes. Verify queries before running.
 					</Alert>

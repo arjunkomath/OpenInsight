@@ -330,7 +330,7 @@ export default function QueryInterface({
 	const visibleMessages = getVisibleMessages();
 
 	return (
-		<Box flexDirection="column" height={terminalHeight}>
+		<Box flexDirection="column" height={terminalHeight} paddingY={1}>
 			<Box paddingX={1}>
 				<Text bold color="cyan">
 					{source.name}
@@ -378,7 +378,7 @@ export default function QueryInterface({
 						)}
 						{msg.role === 'error' && <Text color="red">✗ {msg.content}</Text>}
 						{msg.role === 'system' && (
-							<Box flexDirection="column">
+							<Box flexDirection="column" marginBottom={1}>
 								{msg.content.split('\n').map((line, i) => (
 									<Text key={i} color="yellow">
 										{line}

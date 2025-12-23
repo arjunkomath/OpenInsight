@@ -1,5 +1,6 @@
 import React, {useState, useEffect} from 'react';
 import {Box, Text} from 'ink';
+import {Spinner} from '@inkjs/ui';
 import DataSourceManager from './components/DataSourceManager.js';
 import QueryInterface from './components/QueryInterface.js';
 import {
@@ -43,18 +44,19 @@ export default function App() {
 
 	const handleSelectSource = async source => {
 		setSelectedSource(source);
-		setAppState('loading-schema');
 		setSchemaError(null);
+		setSchema(null);
+		setAppState('loading-schema');
 
 		const result = await fetchSchema(source.connectionString, source.type);
 
 		if (result.error) {
 			setSchemaError(result.error);
-			setAppState('query');
 		} else {
 			setSchema(result.schema);
-			setAppState('query');
 		}
+
+		setAppState('query');
 	};
 
 	const handleGenerateQuery = async (query, history, onLog) => {
@@ -118,7 +120,7 @@ export default function App() {
 				<Text bold color="cyan">
 					{selectedSource.name}
 				</Text>
-				<Text color="yellow">Loading database schema...</Text>
+				<Spinner label="Loading database schema..." />
 			</Box>
 		);
 	}
