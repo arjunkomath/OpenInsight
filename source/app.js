@@ -1,6 +1,6 @@
 import React, {useState, useEffect} from 'react';
 import {Box, Text} from 'ink';
-import {Spinner} from '@inkjs/ui';
+import Spinner from 'ink-spinner';
 import DataSourceManager from './components/DataSourceManager.js';
 import QueryInterface from './components/QueryInterface.js';
 import {
@@ -120,7 +120,7 @@ export default function App() {
 				<Text bold color="cyan">
 					{selectedSource.name}
 				</Text>
-				<Spinner label="Loading database schema..." />
+				<Text><Spinner /> Loading database schema...</Text>
 			</Box>
 		);
 	}

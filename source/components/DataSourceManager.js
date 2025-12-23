@@ -2,7 +2,7 @@ import React, {useState} from 'react';
 import {Box, Text, useStdout} from 'ink';
 import SelectInput from 'ink-select-input';
 import TextInput from 'ink-text-input';
-import {Alert, Spinner} from '@inkjs/ui';
+import Spinner from 'ink-spinner';
 import {
 	testConnection,
 	validateConnectionString,
@@ -95,9 +95,9 @@ export default function DataSourceManager({
 					</Box>
 
 					<Box paddingX={1} paddingBottom={1} flexDirection="column" gap={1}>
-						<Alert variant="warning">
-							AI can make mistakes. Verify queries before running.
-						</Alert>
+						<Box borderStyle="round" borderColor="yellow" paddingX={1}>
+							<Text color="yellow">⚠ AI can make mistakes. Verify queries before running.</Text>
+						</Box>
 						<Text dimColor>Press Ctrl+C to exit</Text>
 					</Box>
 				</Box>
@@ -149,9 +149,9 @@ export default function DataSourceManager({
 				</Box>
 
 				<Box paddingX={1} marginTop={1} flexDirection="column" gap={1}>
-					<Alert variant="warning">
-						AI can make mistakes. Verify queries before running.
-					</Alert>
+					<Box borderStyle="round" borderColor="yellow" paddingX={1}>
+						<Text color="yellow">⚠ AI can make mistakes. Verify queries before running.</Text>
+					</Box>
 					<Text dimColor>Press Ctrl+C to exit</Text>
 				</Box>
 			</Box>
@@ -218,7 +218,7 @@ export default function DataSourceManager({
 
 					{isValidating && (
 						<Box marginTop={1}>
-							<Spinner label="Testing connection..." />
+							<Text><Spinner /> Testing connection...</Text>
 						</Box>
 					)}
 

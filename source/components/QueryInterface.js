@@ -1,19 +1,8 @@
 import React, {useState} from 'react';
 import {Box, Text, useStdout, useInput} from 'ink';
-import {Spinner, TextInput} from '@inkjs/ui';
+import Spinner from 'ink-spinner';
+import TextInput from 'ink-text-input';
 import Table from './Table.js';
-
-const COMMANDS = [
-	'/help',
-	'/new',
-	'/save',
-	'/presets',
-	'/delete-preset',
-	'/add',
-	'/sources',
-	'/schema',
-	'/clear',
-];
 
 export default function QueryInterface({
 	source,
@@ -405,7 +394,7 @@ export default function QueryInterface({
 				))}
 				{isProcessing && (
 					<Box paddingLeft={1}>
-						<Spinner label="Thinking..." />
+						<Text><Spinner /> Thinking...</Text>
 					</Box>
 				)}
 			</Box>
@@ -420,7 +409,7 @@ export default function QueryInterface({
 				<Text color={pendingQuery ? 'yellow' : 'cyan'}>❯ </Text>
 				<TextInput
 					key={inputKey}
-					defaultValue=""
+					value={input}
 					onChange={value => !pendingQuery && setInput(value)}
 					onSubmit={handleSubmit}
 					placeholder={
@@ -428,7 +417,6 @@ export default function QueryInterface({
 							? 'Press Y to run, N to cancel'
 							: 'Ask a question about your data...'
 					}
-					suggestions={COMMANDS}
 				/>
 			</Box>
 
