@@ -1,7 +1,7 @@
 {
 	"name": "openinsight",
 	"version": "0.1.0",
-	"description": "AI-powered natural language to SQL CLI tool for querying databases",
+	"description": "Query your database with natural language",
 	"license": "MIT",
 	"author": "Arjun Komath",
 	"repository": {
@@ -73,7 +73,8 @@
 		"extends": "xo-react",
 		"prettier": true,
 		"rules": {
-			"react/prop-types": "off"
+			"react/prop-types": "off",
+			"unicorn/expiring-todo-comments": "off"
 		}
 	},
 	"prettier": "@vdemedes/prettier-config",

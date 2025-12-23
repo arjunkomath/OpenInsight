@@ -6,18 +6,13 @@
 
 ```bash
 # 1. Install
-# TODO
+npm i -g openinsight
 
 # 2. Set your OpenRouter API key
 export OPENROUTER_KEY=sk-...
 
 # 3. Run
 openinsight
-
-# 4. Add a data source
-
-# 5. Ask a question
-> How many users signed up last week?
 ```
 
 ---
