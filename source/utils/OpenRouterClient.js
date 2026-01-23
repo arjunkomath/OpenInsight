@@ -39,6 +39,7 @@ async function generateSQL(
 Return ONLY valid SQL queries that perform READ operations (SELECT, WITH, UNION, etc.).
 NEVER generate INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, or any mutation operations.
 IMPORTANT: Always wrap table AND column names in double quotes to preserve case sensitivity (e.g., "User"."userId", "Order"."createdAt").
+IMPORTANT: Always include a LIMIT clause to prevent excessive data retrieval. Use LIMIT 1000 unless the user specifies a different limit or asks for all rows.
 Database schema: ${JSON.stringify(schema)}`;
 
 	log(`[AI Request] User query: "${naturalLanguageQuery}"`);
@@ -84,7 +85,8 @@ async function fixSQL(openrouter, model, failedSql, errorMessage, schema, log) {
 Return ONLY valid SQL queries that perform READ operations (SELECT, WITH).
 NEVER generate INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, or any mutation operations.
 Database schema: ${JSON.stringify(schema)}
-IMPORTANT: Always wrap table and column names in double quotes to preserve case sensitivity (e.g., "User", "userId").`;
+IMPORTANT: Always wrap table and column names in double quotes to preserve case sensitivity (e.g., "User", "userId").
+IMPORTANT: Always include a LIMIT clause to prevent excessive data retrieval. Preserve any existing LIMIT or use LIMIT 1000 if none exists.`;
 
 	log(`[AI Request] Fixing SQL error: ${errorMessage}`);
 
