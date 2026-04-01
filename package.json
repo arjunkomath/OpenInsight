@@ -34,6 +34,7 @@
 	"scripts": {
 		"build": "babel --out-dir=dist source",
 		"dev": "babel --out-dir=dist --watch source",
+		"format": "prettier --write .",
 		"test": "prettier --check . && xo && ava"
 	},
 	"files": [

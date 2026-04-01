@@ -96,7 +96,9 @@ export default function DataSourceManager({
 
 					<Box paddingX={1} paddingBottom={1} flexDirection="column" gap={1}>
 						<Box borderStyle="round" borderColor="yellow" paddingX={1}>
-							<Text color="yellow">⚠ AI can make mistakes. Verify queries before running.</Text>
+							<Text color="yellow">
+								⚠ AI can make mistakes. Verify queries before running.
+							</Text>
 						</Box>
 						<Text dimColor>Press Ctrl+C to exit</Text>
 					</Box>
@@ -150,7 +152,9 @@ export default function DataSourceManager({
 
 				<Box paddingX={1} marginTop={1} flexDirection="column" gap={1}>
 					<Box borderStyle="round" borderColor="yellow" paddingX={1}>
-						<Text color="yellow">⚠ AI can make mistakes. Verify queries before running.</Text>
+						<Text color="yellow">
+							⚠ AI can make mistakes. Verify queries before running.
+						</Text>
 					</Box>
 					<Text dimColor>Press Ctrl+C to exit</Text>
 				</Box>
@@ -218,7 +222,9 @@ export default function DataSourceManager({
 
 					{isValidating && (
 						<Box marginTop={1}>
-							<Text><Spinner /> Testing connection...</Text>
+							<Text>
+								<Spinner /> Testing connection...
+							</Text>
 						</Box>
 					)}
 

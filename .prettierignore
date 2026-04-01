@@ -3,3 +3,4 @@ dist
 .openinsight
 dev
 readme.md
+pnpm-lock.yaml

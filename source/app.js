@@ -1,3 +1,4 @@
+import process from 'node:process';
 import React, {useState, useEffect} from 'react';
 import {Box, Text} from 'ink';
 import Spinner from 'ink-spinner';
@@ -16,9 +17,8 @@ import {
 	fetchSchema,
 } from './utils/QueryProcessor.js';
 
-const OPENROUTER_KEY = process.env.OPENROUTER_KEY;
-const OPENROUTER_MODEL =
-	process.env.OPENROUTER_MODEL || 'google/gemini-2.5-flash';
+const {OPENROUTER_KEY, OPENROUTER_MODEL = 'google/gemini-2.5-flash'} =
+	process.env;
 
 export default function App() {
 	const [appState, setAppState] = useState('manage-sources');
@@ -39,6 +39,7 @@ export default function App() {
 		if (result.success) {
 			setDataSources([...dataSources, source]);
 		}
+
 		return result;
 	};
 
@@ -71,7 +72,7 @@ export default function App() {
 			return {error: 'Database schema not loaded', sql: null};
 		}
 
-		return await generateQuery(
+		return generateQuery(
 			query,
 			schema,
 			OPENROUTER_KEY,
@@ -86,7 +87,7 @@ export default function App() {
 			return {error: 'Database schema not loaded', sql, data: null};
 		}
 
-		return await executeQuery(
+		return executeQuery(
 			sql,
 			selectedSource.connectionString,
 			schema,
@@ -120,7 +121,9 @@ export default function App() {
 				<Text bold color="cyan">
 					{selectedSource.name}
 				</Text>
-				<Text><Spinner /> Loading database schema...</Text>
+				<Text>
+					<Spinner /> Loading database schema...
+				</Text>
 			</Box>
 		);
 	}
@@ -128,19 +131,19 @@ export default function App() {
 	if (appState === 'query') {
 		return (
 			<QueryInterface
+				hasApiKey={Boolean(OPENROUTER_KEY)}
+				model={OPENROUTER_MODEL}
 				source={selectedSource}
 				sources={dataSources}
 				schema={schema}
 				schemaError={schemaError}
+				onDeletePreset={presetId => removePreset(selectedSource.id, presetId)}
 				onGenerateQuery={handleGenerateQuery}
 				onExecuteQuery={handleExecuteQuery}
-				onSwitchSource={handleSelectSource}
-				onManageSources={() => setAppState('manage-sources')}
 				onLoadPresets={() => loadPresets(selectedSource.id)}
+				onManageSources={() => setAppState('manage-sources')}
 				onSavePreset={preset => savePreset(selectedSource.id, preset)}
-				onDeletePreset={presetId => removePreset(selectedSource.id, presetId)}
-				hasApiKey={Boolean(OPENROUTER_KEY)}
-				model={OPENROUTER_MODEL}
+				onSwitchSource={handleSelectSource}
 			/>
 		);
 	}

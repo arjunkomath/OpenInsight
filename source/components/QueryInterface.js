@@ -1,8 +1,13 @@
-import React, {useState} from 'react';
+import process from 'node:process';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Box, Text, useStdout, useInput} from 'ink';
 import Spinner from 'ink-spinner';
 import TextInput from 'ink-text-input';
-import Table from './Table.js';
+import {
+	getVisibleLineWindow,
+	renderTranscriptLines,
+	truncateStatus,
+} from '../utils/transcript.js';
 
 export default function QueryInterface({
 	source,
@@ -30,21 +35,33 @@ export default function QueryInterface({
 				content: `Schema loaded: ${tableCount} tables`,
 			});
 		}
+
 		if (schemaError) {
 			initial.push({role: 'error', content: `Schema error: ${schemaError}`});
 		}
+
 		return initial;
 	});
 	const [isProcessing, setIsProcessing] = useState(false);
+	const [scrollTop, setScrollTop] = useState(0);
+	const [autoFollow, setAutoFollow] = useState(true);
 	const [pendingQuery, setPendingQuery] = useState(null);
 	const [lastExecutedSql, setLastExecutedSql] = useState(null);
 	const {stdout} = useStdout();
 	const terminalHeight = stdout?.rows || 24;
+	const terminalWidth = stdout?.columns || 80;
+	const previousMetricsRef = useRef({
+		lineCount: 0,
+		transcriptHeight: 0,
+	});
 
 	const MAX_MESSAGES = 100;
+	const reservedRows = 6;
+	const transcriptHeight = Math.max(terminalHeight - reservedRows, 4);
+	const transcriptWidth = Math.max(terminalWidth - 4, 20);
 
-	const addMessage = msg => {
-		setMessages(prev => [...prev.slice(-MAX_MESSAGES + 1), msg]);
+	const addMessage = message => {
+		setMessages(previous => [...previous.slice(-MAX_MESSAGES + 1), message]);
 	};
 
 	const addLog = message => {
@@ -56,10 +73,15 @@ export default function QueryInterface({
 		setInputKey(k => k + 1);
 	};
 
+	const pinToBottom = () => {
+		setAutoFollow(true);
+	};
+
 	const executeConfirmedQuery = async () => {
 		clearInput();
+		pinToBottom();
 		setIsProcessing(true);
-		const sql = pendingQuery.sql;
+		const {sql} = pendingQuery;
 		setPendingQuery(null);
 		const result = await onExecuteQuery(sql, addLog);
 		setIsProcessing(false);
@@ -74,17 +96,132 @@ export default function QueryInterface({
 
 	const cancelPendingQuery = () => {
 		clearInput();
+		pinToBottom();
 		addMessage({role: 'system', content: 'Query cancelled'});
 		setPendingQuery(null);
 	};
 
-	useInput((input, key) => {
-		if (!pendingQuery || isProcessing) return;
+	const maxTableRows = Math.max(Math.floor((transcriptHeight - 8) / 2), 3);
 
-		if (input.toLowerCase() === 'y') {
-			executeConfirmedQuery();
-		} else if (input.toLowerCase() === 'n' || key.escape) {
-			cancelPendingQuery();
+	const prepareTableData = data => {
+		if (!data || data.length === 0) return null;
+
+		const rows = data.slice(0, maxTableRows);
+		const columns = Object.keys(data[0]);
+
+		return rows.map(row => {
+			const newRow = {};
+			for (const col of columns) {
+				const value = row[col];
+
+				if (value === null || value === undefined) {
+					newRow[col] = '';
+				} else if (typeof value === 'object') {
+					newRow[col] = JSON.stringify(value).slice(0, 20);
+				} else {
+					newRow[col] = String(value).slice(0, 25);
+				}
+			}
+
+			return newRow;
+		});
+	};
+
+	const displayMessages = messages.map(message =>
+		message.role === 'assistant' && message.data
+			? {
+					...message,
+					data: prepareTableData(message.data),
+					resultCount: message.data.length,
+					moreRows: Math.max(message.data.length - maxTableRows, 0),
+			  }
+			: message,
+	);
+
+	const transcriptLines = useMemo(
+		() => renderTranscriptLines(displayMessages, {width: transcriptWidth}),
+		[displayMessages, transcriptWidth],
+	);
+
+	const {
+		maxScrollTop,
+		visibleLines,
+		scrollTop: resolvedScrollTop,
+	} = useMemo(
+		() => getVisibleLineWindow(transcriptLines, scrollTop, transcriptHeight),
+		[transcriptHeight, transcriptLines, scrollTop],
+	);
+
+	useEffect(() => {
+		setScrollTop(current => {
+			const previousLineCount = previousMetricsRef.current.lineCount;
+			const previousHeight =
+				previousMetricsRef.current.transcriptHeight || transcriptHeight;
+			const previousMaxScrollTop = Math.max(
+				previousLineCount - previousHeight,
+				0,
+			);
+			const wasAtBottom = current >= previousMaxScrollTop;
+			const nextScrollTop =
+				autoFollow || wasAtBottom
+					? maxScrollTop
+					: Math.min(current, maxScrollTop);
+
+			previousMetricsRef.current = {
+				lineCount: transcriptLines.length,
+				transcriptHeight,
+			};
+
+			return nextScrollTop;
+		});
+	}, [autoFollow, maxScrollTop, transcriptHeight, transcriptLines.length]);
+
+	const updateScrollTop = nextScrollTop => {
+		const clamped = Math.max(0, Math.min(nextScrollTop, maxScrollTop));
+		setScrollTop(clamped);
+		setAutoFollow(clamped >= maxScrollTop);
+	};
+
+	useInput((input, key) => {
+		if (pendingQuery && !isProcessing) {
+			if (input.toLowerCase() === 'y') {
+				executeConfirmedQuery();
+				return;
+			}
+
+			if (input.toLowerCase() === 'n' || key.escape) {
+				cancelPendingQuery();
+				return;
+			}
+		}
+
+		if (key.upArrow) {
+			updateScrollTop(resolvedScrollTop - 1);
+			return;
+		}
+
+		if (key.downArrow) {
+			updateScrollTop(resolvedScrollTop + 1);
+			return;
+		}
+
+		if (key.pageUp || (key.ctrl && input === 'u')) {
+			updateScrollTop(resolvedScrollTop - Math.max(1, transcriptHeight - 2));
+			return;
+		}
+
+		if (key.pageDown || (key.ctrl && input === 'd')) {
+			updateScrollTop(resolvedScrollTop + Math.max(1, transcriptHeight - 2));
+			return;
+		}
+
+		if (key.home) {
+			updateScrollTop(0);
+			return;
+		}
+
+		if (key.end) {
+			updateScrollTop(maxScrollTop);
 		}
 	});
 
@@ -97,6 +234,7 @@ export default function QueryInterface({
 
 		addMessage({role: 'user', content: query});
 		clearInput();
+		pinToBottom();
 
 		if (query.startsWith('/')) {
 			handleCommand(query);
@@ -135,191 +273,201 @@ export default function QueryInterface({
 	};
 
 	const handleCommand = command => {
-		if (command === '/help') {
-			addMessage({
-				role: 'system',
-				content:
-					'Commands:\n/help - Show this help\n/new - Start new thread\n/save <name> - Save last query as preset\n/presets - List saved presets\n/presets <n> - Run preset n\n/delete-preset <n> - Delete preset n\n/add - Add new data source\n/sources - List all sources\n/sources <n> - Switch to source n\n/schema - Show cached schema\n/clear - Clear messages',
-			});
-		} else if (command === '/save' || command.startsWith('/save ')) {
-			const name = command.slice(5).trim();
-			if (!name) {
-				addMessage({role: 'error', content: 'Usage: /save <name>'});
-				return;
-			}
-			if (!lastExecutedSql) {
+		switch (true) {
+			case command === '/help': {
 				addMessage({
-					role: 'error',
-					content: 'No query to save. Run a query first.',
+					role: 'system',
+					content:
+						'Commands:\n/help - Show this help\n/new - Start new thread\n/save <name> - Save last query as preset\n/presets - List saved presets\n/presets <n> - Run preset n\n/delete-preset <n> - Delete preset n\n/add - Add new data source\n/sources - List all sources\n/sources <n> - Switch to source n\n/schema - Show cached schema\n/clear - Clear messages',
 				});
 				return;
 			}
-			const result = onSavePreset({name, sql: lastExecutedSql});
-			if (result.success) {
-				addMessage({role: 'system', content: `Preset "${name}" saved`});
-			} else {
-				addMessage({role: 'error', content: result.error});
-			}
-		} else if (command.startsWith('/presets')) {
-			const parts = command.split(' ');
-			const presets = onLoadPresets();
-			if (parts.length === 1) {
-				if (presets.length === 0) {
+
+			case command === '/save' || command.startsWith('/save '): {
+				const name = command.slice(5).trim();
+				if (!name) {
+					addMessage({role: 'error', content: 'Usage: /save <name>'});
+					return;
+				}
+
+				if (!lastExecutedSql) {
 					addMessage({
-						role: 'system',
-						content:
-							'No presets saved. Use /save <name> after running a query.',
+						role: 'error',
+						content: 'No query to save. Run a query first.',
 					});
-				} else {
-					const list = presets.map((p, i) => `${i + 1}. ${p.name}`).join('\n');
+					return;
+				}
+
+				const result = onSavePreset({name, sql: lastExecutedSql});
+				addMessage(
+					result.success
+						? {role: 'system', content: `Preset "${name}" saved`}
+						: {role: 'error', content: result.error},
+				);
+				return;
+			}
+
+			case command.startsWith('/presets'): {
+				const parts = command.split(' ');
+				const presets = onLoadPresets();
+				if (parts.length === 1) {
+					if (presets.length === 0) {
+						addMessage({
+							role: 'system',
+							content:
+								'No presets saved. Use /save <name> after running a query.',
+						});
+						return;
+					}
+
+					const list = presets
+						.map((preset, index) => `${index + 1}. ${preset.name}`)
+						.join('\n');
 					addMessage({
 						role: 'system',
 						content: `Presets:\n${list}\n\nUse /presets <n> to run`,
 					});
+					return;
 				}
-			} else {
-				const idx = parseInt(parts[1], 10) - 1;
-				if (idx >= 0 && idx < presets.length) {
-					const preset = presets[idx];
+
+				const index = Number.parseInt(parts[1], 10) - 1;
+				if (index >= 0 && index < presets.length) {
+					const preset = presets[index];
 					setPendingQuery({sql: preset.sql, query: preset.name});
 					addMessage({role: 'confirm', content: preset.sql});
-				} else {
-					addMessage({
-						role: 'error',
-						content: `Invalid preset number. Use 1-${presets.length}`,
-					});
+					return;
 				}
+
+				addMessage({
+					role: 'error',
+					content: `Invalid preset number. Use 1-${presets.length}`,
+				});
+				return;
 			}
-		} else if (
-			command === '/delete-preset' ||
-			command.startsWith('/delete-preset ')
-		) {
-			const parts = command.split(' ');
-			const presets = onLoadPresets();
-			if (parts.length === 1) {
-				addMessage({role: 'error', content: 'Usage: /delete-preset <n>'});
-			} else {
-				const idx = parseInt(parts[1], 10) - 1;
-				if (idx >= 0 && idx < presets.length) {
-					const preset = presets[idx];
+
+			case command === '/delete-preset' ||
+				command.startsWith('/delete-preset '): {
+				const parts = command.split(' ');
+				const presets = onLoadPresets();
+				if (parts.length === 1) {
+					addMessage({role: 'error', content: 'Usage: /delete-preset <n>'});
+					return;
+				}
+
+				const index = Number.parseInt(parts[1], 10) - 1;
+				if (index >= 0 && index < presets.length) {
+					const preset = presets[index];
 					const result = onDeletePreset(preset.id);
-					if (result) {
-						addMessage({
-							role: 'system',
-							content: `Preset "${preset.name}" deleted`,
-						});
-					} else {
-						addMessage({role: 'error', content: 'Failed to delete preset'});
-					}
-				} else {
-					addMessage({
-						role: 'error',
-						content: `Invalid preset number. Use 1-${presets.length}`,
-					});
+					addMessage(
+						result
+							? {role: 'system', content: `Preset "${preset.name}" deleted`}
+							: {role: 'error', content: 'Failed to delete preset'},
+					);
+					return;
 				}
+
+				addMessage({
+					role: 'error',
+					content: `Invalid preset number. Use 1-${presets.length}`,
+				});
+				return;
 			}
-		} else if (command.startsWith('/sources')) {
-			const parts = command.split(' ');
-			if (parts.length === 1) {
-				const list = sources
-					.map(
-						(s, i) =>
-							`${i + 1}. ${s.name} (${s.type})${
-								s.id === source.id ? ' *' : ''
-							}`,
-					)
-					.join('\n');
-				addMessage({role: 'system', content: `Data Sources:\n${list}`});
-			} else {
-				const idx = parseInt(parts[1], 10) - 1;
-				if (idx >= 0 && idx < sources.length) {
-					onSwitchSource(sources[idx]);
-				} else {
-					addMessage({
-						role: 'error',
-						content: `Invalid source number. Use 1-${sources.length}`,
-					});
+
+			case command.startsWith('/sources'): {
+				const parts = command.split(' ');
+				if (parts.length === 1) {
+					const list = sources
+						.map(
+							(currentSource, index) =>
+								`${index + 1}. ${currentSource.name} (${currentSource.type})${
+									currentSource.id === source.id ? ' *' : ''
+								}`,
+						)
+						.join('\n');
+					addMessage({role: 'system', content: `Data Sources:\n${list}`});
+					return;
 				}
+
+				const index = Number.parseInt(parts[1], 10) - 1;
+				if (index >= 0 && index < sources.length) {
+					onSwitchSource(sources[index]);
+					return;
+				}
+
+				addMessage({
+					role: 'error',
+					content: `Invalid source number. Use 1-${sources.length}`,
+				});
+				return;
 			}
-		} else if (command === '/source') {
-			addMessage({
-				role: 'system',
-				content: `Connected to: ${source.name} (${source.type})`,
-			});
-		} else if (command === '/schema') {
-			if (!schema) {
+
+			case command === '/source': {
+				addMessage({
+					role: 'system',
+					content: `Connected to: ${source.name} (${source.type})`,
+				});
+				return;
+			}
+
+			case command === '/schema': {
+				if (schema) {
+					const tables = Object.entries(schema)
+						.map(
+							([table, cols]) =>
+								`${table}: ${cols.map(column => column.column).join(', ')}`,
+						)
+						.join('\n');
+					addMessage({role: 'system', content: `Tables:\n${tables}`});
+					return;
+				}
+
 				addMessage({role: 'error', content: 'No schema loaded'});
-			} else {
-				const tables = Object.entries(schema)
-					.map(
-						([table, cols]) =>
-							`${table}: ${cols.map(c => c.column).join(', ')}`,
-					)
-					.join('\n');
-				addMessage({role: 'system', content: `Tables:\n${tables}`});
+				return;
 			}
-		} else if (command === '/clear') {
-			setMessages([]);
-		} else if (command === '/new') {
-			setMessages([{role: 'system', content: 'New thread started'}]);
-		} else if (command === '/add') {
-			onManageSources();
-		} else {
-			addMessage({role: 'system', content: `Unknown command: ${command}`});
-		}
-	};
 
-	const maxTableRows = Math.max(Math.floor((terminalHeight - 15) / 1), 3);
-
-	const prepareTableData = data => {
-		if (!data || data.length === 0) return null;
-
-		const rows = data.slice(0, maxTableRows);
-		const columns = Object.keys(data[0]);
-
-		return rows.map(row => {
-			const newRow = {};
-			for (const col of columns) {
-				const val = row[col];
-				if (val === null || val === undefined) {
-					newRow[col] = '';
-				} else if (typeof val === 'object') {
-					newRow[col] = JSON.stringify(val).slice(0, 20);
-				} else {
-					newRow[col] = String(val).slice(0, 25);
-				}
+			case command === '/clear': {
+				setMessages([]);
+				return;
 			}
-			return newRow;
-		});
-	};
 
-	const getVisibleMessages = () => {
-		const result = [];
-		let lineCount = 0;
-		const maxLines = terminalHeight - 5;
-
-		for (let i = messages.length - 1; i >= 0 && lineCount < maxLines; i--) {
-			const msg = messages[i];
-			let msgLines = 2;
-			if (msg.role === 'assistant' && msg.data?.length > 0) {
-				msgLines = 5 + Math.min(msg.data.length, maxTableRows);
-			} else if (msg.role === 'system') {
-				msgLines = msg.content.split('\n').length;
+			case command === '/new': {
+				setMessages([{role: 'system', content: 'New thread started'}]);
+				return;
 			}
-			if (lineCount + msgLines <= maxLines) {
-				result.unshift(msg);
-				lineCount += msgLines;
-			} else {
-				break;
+
+			case command === '/add': {
+				onManageSources();
+				return;
+			}
+
+			default: {
+				addMessage({role: 'system', content: `Unknown command: ${command}`});
 			}
 		}
-		return result;
 	};
 
-	const visibleMessages = getVisibleMessages();
+	const hiddenAbove = resolvedScrollTop;
+	const hiddenBelow = Math.max(maxScrollTop - resolvedScrollTop, 0);
+	const visibleRangeStart =
+		transcriptLines.length === 0 ? 0 : resolvedScrollTop + 1;
+	const visibleRangeEnd = Math.min(
+		resolvedScrollTop + transcriptHeight,
+		transcriptLines.length,
+	);
+	const statusText = truncateStatus(
+		[
+			`Lines ${visibleRangeStart}-${visibleRangeEnd} of ${transcriptLines.length}`,
+			hiddenAbove > 0 ? `${hiddenAbove} above` : 'top',
+			hiddenBelow > 0 ? `${hiddenBelow} below` : 'following',
+			'↑↓ scroll',
+			'PgUp/PgDn page',
+			'Home/End top/bottom',
+		].join(' • '),
+		Math.max(terminalWidth - 4, 20),
+	);
 
 	return (
-		<Box flexDirection="column" height={terminalHeight} paddingY={1}>
+		<Box flexDirection="column" height={terminalHeight}>
 			<Box paddingX={1}>
 				<Text bold color="cyan">
 					{source.name}
@@ -328,74 +476,30 @@ export default function QueryInterface({
 				{!hasApiKey && <Text color="red"> [No API Key]</Text>}
 			</Box>
 
-			<Box flexDirection="column" flexGrow={1} paddingX={1}>
-				{visibleMessages.map((msg, index) => (
-					<Box key={index} flexDirection="column">
-						{msg.role === 'user' && (
-							<Box flexDirection="column">
-								<Text color="cyan" bold>
-									› {msg.content}
-								</Text>
-							</Box>
-						)}
-						{msg.role === 'log' && <Text color="gray">│ {msg.content}</Text>}
-						{msg.role === 'assistant' && (
-							<Box
-								borderStyle="round"
-								borderColor="gray"
-								paddingX={1}
-								flexDirection="column"
-								marginY={1}
+			<Box flexDirection="column" height={transcriptHeight} paddingX={1}>
+				{visibleLines.map(line => (
+					<Box key={line.key}>
+						{line.segments.map(segment => (
+							<Text
+								key={segment.key}
+								color={segment.color}
+								bold={segment.bold}
+								dimColor={segment.dimColor}
 							>
-								<Text color="gray" dimColor>
-									{msg.content}
-								</Text>
-								{msg.data && msg.data.length > 0 && (
-									<Box flexDirection="column">
-										<Table data={prepareTableData(msg.data)} />
-										{msg.data.length > maxTableRows && (
-											<Text dimColor>
-												({msg.data.length - maxTableRows} more rows)
-											</Text>
-										)}
-									</Box>
-								)}
-								{msg.data && msg.data.length === 0 && (
-									<Text dimColor>No results</Text>
-								)}
-							</Box>
-						)}
-						{msg.role === 'error' && <Text color="red">✗ {msg.content}</Text>}
-						{msg.role === 'system' && (
-							<Box flexDirection="column" marginBottom={1}>
-								{msg.content.split('\n').map((line, i) => (
-									<Text key={i} color="yellow">
-										{line}
-									</Text>
-								))}
-							</Box>
-						)}
-						{msg.role === 'confirm' && (
-							<Box
-								borderStyle="round"
-								borderColor="green"
-								paddingX={1}
-								flexDirection="column"
-								marginY={1}
-							>
-								<Text color="white">{msg.content}</Text>
-								<Text color="yellow" bold>
-									Execute?{' '}
-								</Text>
-								<Text dimColor>(Y to run, N to cancel)</Text>
-							</Box>
-						)}
+								{segment.text}
+							</Text>
+						))}
 					</Box>
 				))}
-				{isProcessing && (
-					<Box paddingLeft={1}>
-						<Text><Spinner /> Thinking...</Text>
-					</Box>
+			</Box>
+
+			<Box paddingX={1} flexShrink={0}>
+				{isProcessing ? (
+					<Text color="cyan">
+						<Spinner /> Thinking...
+					</Text>
+				) : (
+					<Text dimColor>{statusText}</Text>
 				)}
 			</Box>
 
@@ -409,14 +513,14 @@ export default function QueryInterface({
 				<Text color={pendingQuery ? 'yellow' : 'cyan'}>❯ </Text>
 				<TextInput
 					key={inputKey}
-					value={input}
-					onChange={value => !pendingQuery && setInput(value)}
-					onSubmit={handleSubmit}
 					placeholder={
 						pendingQuery
 							? 'Press Y to run, N to cancel'
 							: 'Ask a question about your data...'
 					}
+					value={input}
+					onChange={value => !pendingQuery && setInput(value)}
+					onSubmit={handleSubmit}
 				/>
 			</Box>
 
