@@ -1,6 +1,7 @@
 import pg from 'pg';
 import mysql from 'mysql2/promise';
 import Database from 'better-sqlite3';
+import {createAbortError, throwIfAborted} from './abort.js';
 
 export function parseConnectionString(connectionString) {
 	if (
@@ -120,10 +121,48 @@ class PostgresConnection {
 		}
 	}
 
-	async query(sql) {
+	async query(sql, {abortSignal} = {}) {
 		await this.connect();
-		const result = await this.client.query(sql);
-		return result.rows;
+		throwIfAborted(abortSignal, 'Query execution cancelled');
+
+		return new Promise((resolve, reject) => {
+			let settled = false;
+
+			const finish = (callback, value) => {
+				if (settled) {
+					return;
+				}
+
+				settled = true;
+				abortSignal?.removeEventListener('abort', onAbort);
+				callback(value);
+			};
+
+			const onAbort = () => {
+				try {
+					if (this.client.activeQuery) {
+						this.client.cancel(this.client, this.client.activeQuery);
+					}
+				} catch {}
+
+				finish(reject, createAbortError('Query execution cancelled'));
+			};
+
+			abortSignal?.addEventListener('abort', onAbort, {once: true});
+			this.client.query(sql, (error, result) => {
+				if (abortSignal?.aborted) {
+					finish(reject, createAbortError('Query execution cancelled'));
+					return;
+				}
+
+				if (error) {
+					finish(reject, error);
+					return;
+				}
+
+				finish(resolve, result.rows);
+			});
+		});
 	}
 
 	async close() {
@@ -146,10 +185,50 @@ class MySQLConnection {
 		}
 	}
 
-	async query(sql) {
+	async query(sql, {abortSignal} = {}) {
 		await this.connect();
-		const [rows] = await this.connection.query(sql);
-		return rows;
+		throwIfAborted(abortSignal, 'Query execution cancelled');
+
+		return new Promise((resolve, reject) => {
+			let settled = false;
+
+			const finish = (callback, value) => {
+				if (settled) {
+					return;
+				}
+
+				settled = true;
+				abortSignal?.removeEventListener('abort', onAbort);
+				callback(value);
+			};
+
+			const onAbort = () => {
+				const {connection} = this;
+				this.connection = null;
+				connection?.destroy();
+				finish(reject, createAbortError('Query execution cancelled'));
+			};
+
+			abortSignal?.addEventListener('abort', onAbort, {once: true});
+			this.connection
+				.query(sql)
+				.then(([rows]) => {
+					if (abortSignal?.aborted) {
+						finish(reject, createAbortError('Query execution cancelled'));
+						return;
+					}
+
+					finish(resolve, rows);
+				})
+				.catch(error => {
+					if (abortSignal?.aborted) {
+						finish(reject, createAbortError('Query execution cancelled'));
+						return;
+					}
+
+					finish(reject, error);
+				});
+		});
 	}
 
 	async close() {
@@ -166,8 +245,11 @@ class SQLiteConnection {
 		this.db = new Database(dbPath);
 	}
 
-	async query(sql) {
-		return this.db.prepare(sql).all();
+	async query(sql, {abortSignal} = {}) {
+		throwIfAborted(abortSignal, 'Query execution cancelled');
+		const rows = this.db.prepare(sql).all();
+		throwIfAborted(abortSignal, 'Query execution cancelled');
+		return rows;
 	}
 
 	async close() {

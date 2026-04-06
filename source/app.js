@@ -69,7 +69,7 @@ export default function App({onRequestQuit = () => {}}) {
 		setAppState('query');
 	};
 
-	const handleGenerateQuery = async (query, history, onLog) => {
+	const handleGenerateQuery = async (query, history, onLog, abortSignal) => {
 		if (!OPENROUTER_KEY) {
 			return {
 				error: 'OPENROUTER_KEY environment variable is required',
@@ -88,10 +88,11 @@ export default function App({onRequestQuit = () => {}}) {
 			OPENROUTER_MODEL,
 			history,
 			onLog,
+			abortSignal,
 		);
 	};
 
-	const handleExecuteQuery = async (sql, onLog) => {
+	const handleExecuteQuery = async (sql, onLog, abortSignal) => {
 		if (!schema) {
 			return {error: 'Database schema not loaded', sql, data: null};
 		}
@@ -103,6 +104,7 @@ export default function App({onRequestQuit = () => {}}) {
 			OPENROUTER_KEY,
 			OPENROUTER_MODEL,
 			onLog,
+			abortSignal,
 		);
 	};
 
@@ -144,7 +146,6 @@ export default function App({onRequestQuit = () => {}}) {
 			<QueryInterface
 				hasApiKey={Boolean(OPENROUTER_KEY)}
 				model={OPENROUTER_MODEL}
-				onRequestQuit={onRequestQuit}
 				source={selectedSource}
 				sources={dataSources}
 				schema={schema}
@@ -154,6 +155,7 @@ export default function App({onRequestQuit = () => {}}) {
 				onExecuteQuery={handleExecuteQuery}
 				onLoadPresets={() => loadPresets(selectedSource.id)}
 				onManageSources={() => setAppState('manage-sources')}
+				onRequestQuit={onRequestQuit}
 				onSavePreset={preset => savePreset(selectedSource.id, preset)}
 				onSwitchSource={handleSelectSource}
 			/>

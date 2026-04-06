@@ -1,6 +1,7 @@
 import {generateObject} from 'ai';
 import {createOpenRouter} from '@openrouter/ai-sdk-provider';
 import {z} from 'zod';
+import {isAbortError} from './abort.js';
 
 const sqlResponseSchema = z.object({
 	sql: z.string().describe('The SQL query to execute'),
@@ -20,10 +21,10 @@ export function createOpenRouterClient(apiKey, model, onLog) {
 	});
 
 	return {
-		generateSQL: (query, schema, history) =>
-			generateSQL(openrouter, model, query, schema, history, log),
-		fixSQL: (sql, error, schema) =>
-			fixSQL(openrouter, model, sql, error, schema, log),
+		generateSQL: (query, schema, history, abortSignal) =>
+			generateSQL(openrouter, model, query, schema, history, log, abortSignal),
+		fixSQL: (sql, error, schema, abortSignal) =>
+			fixSQL(openrouter, model, sql, error, schema, log, abortSignal),
 	};
 }
 
@@ -34,6 +35,7 @@ async function generateSQL(
 	schema,
 	history,
 	log,
+	abortSignal,
 ) {
 	const systemPrompt = `You are a SQL expert. Convert natural language queries to SQL.
 Return ONLY valid SQL queries that perform READ operations (SELECT, WITH, UNION, etc.).
@@ -57,6 +59,7 @@ Database schema: ${JSON.stringify(schema)}`;
 			system: systemPrompt,
 			messages,
 			temperature: 0.3,
+			abortSignal,
 		});
 
 		log(`[AI Response] Model: ${model}`);
@@ -75,12 +78,24 @@ Database schema: ${JSON.stringify(schema)}`;
 
 		return {sql: object.sql, error: null};
 	} catch (error) {
+		if (isAbortError(error)) {
+			throw error;
+		}
+
 		log(`[AI Error] ${error.message}`);
 		return {sql: null, error: `Failed to generate SQL: ${error.message}`};
 	}
 }
 
-async function fixSQL(openrouter, model, failedSql, errorMessage, schema, log) {
+async function fixSQL(
+	openrouter,
+	model,
+	failedSql,
+	errorMessage,
+	schema,
+	log,
+	abortSignal,
+) {
 	const systemPrompt = `You are a SQL expert. Fix the SQL query based on the error message.
 Return ONLY valid SQL queries that perform READ operations (SELECT, WITH).
 NEVER generate INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, or any mutation operations.
@@ -102,6 +117,7 @@ IMPORTANT: Always include a LIMIT clause to prevent excessive data retrieval. Pr
 				},
 			],
 			temperature: 0.2,
+			abortSignal,
 		});
 
 		if (usage) {
@@ -117,6 +133,10 @@ IMPORTANT: Always include a LIMIT clause to prevent excessive data retrieval. Pr
 
 		return {sql: object.sql, error: null};
 	} catch (error) {
+		if (isAbortError(error)) {
+			throw error;
+		}
+
 		log(`[AI Error] ${error.message}`);
 		return {sql: null, error: `Failed to fix SQL: ${error.message}`};
 	}

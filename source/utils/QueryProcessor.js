@@ -1,5 +1,6 @@
-import {createConnection, parseConnectionString} from './DbConnector.js';
+import {createConnection} from './DbConnector.js';
 import {createOpenRouterClient} from './OpenRouterClient.js';
+import {isAbortError, throwIfAborted} from './abort.js';
 
 async function getSchema(conn, dbType) {
 	if (dbType === 'postgres' || dbType === 'postgresql') {
@@ -82,6 +83,7 @@ export async function generateQuery(
 	model,
 	history,
 	onLog,
+	abortSignal,
 ) {
 	const log = message => {
 		if (onLog) onLog(message);
@@ -97,25 +99,42 @@ export async function generateQuery(
 	const tableCount = Object.keys(schema).length;
 	log(`Using cached schema (${tableCount} tables)`);
 
-	const aiClient = createOpenRouterClient(openRouterKey, model, log);
-	log('Generating SQL with AI...');
-	const result = await aiClient.generateSQL(
-		naturalLanguageQuery,
-		schema,
-		history || [],
-	);
+	try {
+		throwIfAborted(abortSignal, 'Inference cancelled');
 
-	if (result.error) {
-		return {error: result.error, sql: null};
+		const aiClient = createOpenRouterClient(openRouterKey, model, log);
+		log('Generating SQL with AI...');
+		const result = await aiClient.generateSQL(
+			naturalLanguageQuery,
+			schema,
+			history || [],
+			abortSignal,
+		);
+
+		throwIfAborted(abortSignal, 'Inference cancelled');
+
+		if (result.error) {
+			return {error: result.error, sql: null};
+		}
+
+		const sql = result.sql;
+
+		if (!isReadOnlyQuery(sql)) {
+			return {error: 'Only SELECT queries are allowed', sql};
+		}
+
+		return {error: null, sql};
+	} catch (error) {
+		if (isAbortError(error)) {
+			log('Inference cancelled');
+			return {cancelled: true, error: null, sql: null};
+		}
+
+		return {
+			error: error.message || 'Unexpected error while generating SQL',
+			sql: null,
+		};
 	}
-
-	const sql = result.sql;
-
-	if (!isReadOnlyQuery(sql)) {
-		return {error: 'Only SELECT queries are allowed', sql};
-	}
-
-	return {error: null, sql};
 }
 
 export async function executeQuery(
@@ -125,54 +144,73 @@ export async function executeQuery(
 	openRouterKey,
 	model,
 	onLog,
+	abortSignal,
 ) {
 	const log = message => {
 		if (onLog) onLog(message);
 	};
 
-	const aiClient = createOpenRouterClient(openRouterKey, model, log);
 	const maxRetries = 3;
 	let currentSql = sqlQuery;
 	let lastError = null;
+	const aiClient = createOpenRouterClient(openRouterKey, model, log);
 
 	for (let attempt = 1; attempt <= maxRetries; attempt++) {
-		if (attempt > 1) {
-			log(`Attempt ${attempt}/${maxRetries}: Fixing SQL...`);
-			const result = await aiClient.fixSQL(currentSql, lastError, schema);
-			if (result.error) {
-				return {error: result.error, sql: currentSql, data: null};
-			}
-			currentSql = result.sql;
-
-			if (!isReadOnlyQuery(currentSql)) {
-				return {
-					error: 'Only SELECT queries are allowed',
-					sql: currentSql,
-					data: null,
-				};
-			}
-		}
-
 		let conn;
 		try {
-			conn = await createConnection(connectionString);
-		} catch (error) {
-			return {
-				error: `Failed to connect: ${error.message}`,
-				sql: currentSql,
-				data: null,
-			};
-		}
+			throwIfAborted(abortSignal, 'Query execution cancelled');
 
-		try {
+			if (attempt > 1) {
+				log(`Attempt ${attempt}/${maxRetries}: Fixing SQL...`);
+				const result = await aiClient.fixSQL(
+					currentSql,
+					lastError,
+					schema,
+					abortSignal,
+				);
+				if (result.error) {
+					return {error: result.error, sql: currentSql, data: null};
+				}
+
+				currentSql = result.sql;
+
+				if (!isReadOnlyQuery(currentSql)) {
+					return {
+						error: 'Only SELECT queries are allowed',
+						sql: currentSql,
+						data: null,
+					};
+				}
+			}
+
+			conn = await createConnection(connectionString);
+			throwIfAborted(abortSignal, 'Query execution cancelled');
+
 			log('Executing query...');
-			const data = await conn.query(currentSql);
-			const rows = Array.from(data);
+			const data = await conn.query(currentSql, {abortSignal});
+			throwIfAborted(abortSignal, 'Query execution cancelled');
+			const rows = [...data];
 			log(`Query returned ${rows.length} rows`);
 			await conn.close();
 			return {error: null, sql: currentSql, data: rows};
 		} catch (error) {
-			await conn.close();
+			if (conn) {
+				await conn.close().catch(() => {});
+			}
+
+			if (isAbortError(error)) {
+				log('Query execution cancelled');
+				return {cancelled: true, error: null, sql: currentSql, data: null};
+			}
+
+			if (!conn) {
+				return {
+					error: `Failed to connect: ${error.message}`,
+					sql: currentSql,
+					data: null,
+				};
+			}
+
 			lastError = error.message;
 			log(`Query error: ${lastError}`);
 			if (attempt === maxRetries) {

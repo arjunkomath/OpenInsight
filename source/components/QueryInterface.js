@@ -45,6 +45,8 @@ export default function QueryInterface({
 		return initial;
 	});
 	const [isProcessing, setIsProcessing] = useState(false);
+	const [activeOperation, setActiveOperation] = useState(null);
+	const [isCancelling, setIsCancelling] = useState(false);
 	const [scrollTop, setScrollTop] = useState(0);
 	const [autoFollow, setAutoFollow] = useState(true);
 	const [pendingQuery, setPendingQuery] = useState(null);
@@ -58,6 +60,7 @@ export default function QueryInterface({
 		lineCount: 0,
 		transcriptHeight: 0,
 	});
+	const activeRequestRef = useRef(null);
 
 	const MAX_MESSAGES = 100;
 	const reservedRows = 9;
@@ -85,15 +88,68 @@ export default function QueryInterface({
 		setAwaitingQuitConfirmation(false);
 	};
 
+	const beginProcessing = operation => {
+		const controller = new AbortController();
+		activeRequestRef.current = {controller, operation};
+		setActiveOperation(operation);
+		setIsCancelling(false);
+		setIsProcessing(true);
+		return controller;
+	};
+
+	const endProcessing = controller => {
+		if (activeRequestRef.current?.controller !== controller) {
+			return;
+		}
+
+		activeRequestRef.current = null;
+		setActiveOperation(null);
+		setIsCancelling(false);
+		setIsProcessing(false);
+	};
+
+	const cancelActiveProcessing = () => {
+		const activeRequest = activeRequestRef.current;
+
+		if (
+			!activeRequest ||
+			activeRequest.controller.signal.aborted ||
+			isCancelling
+		) {
+			return false;
+		}
+
+		pinToBottom();
+		setIsCancelling(true);
+		activeRequest.controller.abort();
+		return true;
+	};
+
 	const executeConfirmedQuery = async () => {
 		clearInput();
 		pinToBottom();
 		resetQuitConfirmation();
-		setIsProcessing(true);
 		const {sql} = pendingQuery;
 		setPendingQuery(null);
-		const result = await onExecuteQuery(sql, addLog);
-		setIsProcessing(false);
+		const controller = beginProcessing('execution');
+		let result;
+
+		try {
+			result = await onExecuteQuery(sql, addLog, controller.signal);
+		} catch (error) {
+			result = {
+				error: error.message || 'Unexpected error while executing query',
+				sql,
+				data: null,
+			};
+		} finally {
+			endProcessing(controller);
+		}
+
+		if (result.cancelled) {
+			addMessage({role: 'system', content: 'Query execution cancelled'});
+			return;
+		}
 
 		if (result.error) {
 			addMessage({role: 'error', content: result.error});
@@ -222,6 +278,11 @@ export default function QueryInterface({
 			return;
 		}
 
+		if (key.escape && isProcessing) {
+			cancelActiveProcessing();
+			return;
+		}
+
 		if (awaitingQuitConfirmation) {
 			resetQuitConfirmation();
 		}
@@ -294,7 +355,7 @@ export default function QueryInterface({
 			return;
 		}
 
-		setIsProcessing(true);
+		const controller = beginProcessing('inference');
 
 		const history = messages
 			.filter(m => m.role === 'user' || m.role === 'assistant')
@@ -304,9 +365,23 @@ export default function QueryInterface({
 				content: m.content,
 			}));
 
-		const result = await onGenerateQuery(query, history, addLog);
+		let result;
 
-		setIsProcessing(false);
+		try {
+			result = await onGenerateQuery(query, history, addLog, controller.signal);
+		} catch (error) {
+			result = {
+				error: error.message || 'Unexpected error while generating SQL',
+				sql: null,
+			};
+		} finally {
+			endProcessing(controller);
+		}
+
+		if (result.cancelled) {
+			addMessage({role: 'system', content: 'Inference cancelled'});
+			return;
+		}
 
 		if (result.error) {
 			addMessage({role: 'error', content: result.error});
@@ -530,7 +605,16 @@ export default function QueryInterface({
 		? 'Press Y to run, N to cancel'
 		: awaitingQuitConfirmation
 		? 'Press Ctrl+C again to quit'
+		: isProcessing
+		? 'Processing... Press Esc to cancel'
 		: 'Ask a question about your data...';
+	const processingText = isCancelling
+		? activeOperation === 'execution'
+			? 'Cancelling query execution...'
+			: 'Cancelling inference...'
+		: activeOperation === 'execution'
+		? 'Running query... Press Esc to cancel'
+		: 'Thinking... Press Esc to cancel';
 
 	return (
 		<Box flexDirection="column" height={terminalHeight}>
@@ -562,7 +646,7 @@ export default function QueryInterface({
 			<Box paddingX={2} paddingTop={1} flexShrink={0}>
 				{isProcessing ? (
 					<Text color="cyan">
-						<Spinner /> Thinking...
+						<Spinner /> {processingText}
 					</Text>
 				) : (
 					<Text dimColor>{statusText}</Text>
