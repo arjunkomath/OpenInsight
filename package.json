@@ -35,7 +35,9 @@
 		"build": "babel --out-dir=dist source",
 		"dev": "babel --out-dir=dist --watch source",
 		"format": "prettier --write .",
-		"test": "prettier --check . && xo && ava"
+		"test": "prettier --check . && xo && ava",
+		"xo": "xo",
+		"ava": "ava"
 	},
 	"files": [
 		"dist"
@@ -71,10 +73,7 @@
 	"ava": {
 		"environmentVariables": {
 			"NODE_NO_WARNINGS": "1"
-		},
-		"nodeArguments": [
-			"--loader=import-jsx"
-		]
+		}
 	},
 	"xo": {
 		"extends": "xo-react",

@@ -19,7 +19,7 @@ export default function DataSourceManager({
 	const [isValidating, setIsValidating] = useState(false);
 	const [error, setError] = useState(null);
 	const {stdout} = useStdout();
-	const [terminalHeight] = useState(() => stdout?.rows || 24);
+	const terminalHeight = stdout?.rows || 24;
 
 	const handleAddSource = async () => {
 		if (!connectionString.trim() || isValidating) return;
@@ -67,7 +67,7 @@ export default function DataSourceManager({
 		if (!hasSources) {
 			return (
 				<Box flexDirection="column" height={terminalHeight}>
-					<Box paddingX={1} paddingY={1}>
+					<Box paddingX={2} paddingY={1}>
 						<Text bold color="cyan">
 							OPEN
 						</Text>
@@ -76,12 +76,12 @@ export default function DataSourceManager({
 						</Text>
 					</Box>
 
-					<Box flexDirection="column" flexGrow={1} paddingX={1}>
+					<Box flexDirection="column" flexGrow={1} paddingX={2} gap={1}>
 						<Box flexDirection="column">
 							<Text color="yellow">No data sources configured.</Text>
 							<Text>Add a database connection to get started.</Text>
 						</Box>
-						<Box marginTop={2}>
+						<Box>
 							<SelectInput
 								items={[{label: '→ Add a data source', value: 'add'}]}
 								onSelect={() => {
@@ -94,7 +94,7 @@ export default function DataSourceManager({
 						</Box>
 					</Box>
 
-					<Box paddingX={1} paddingBottom={1} flexDirection="column" gap={1}>
+					<Box paddingX={2} paddingBottom={1} flexDirection="column" gap={1}>
 						<Box borderStyle="round" borderColor="yellow" paddingX={1}>
 							<Text color="yellow">
 								⚠ AI can make mistakes. Verify queries before running.
@@ -119,8 +119,8 @@ export default function DataSourceManager({
 		});
 
 		return (
-			<Box flexDirection="column" paddingY={1}>
-				<Box paddingX={1}>
+			<Box flexDirection="column" height={terminalHeight}>
+				<Box paddingX={2} paddingY={1}>
 					<Text bold color="cyan">
 						OPEN
 					</Text>
@@ -129,8 +129,8 @@ export default function DataSourceManager({
 					</Text>
 				</Box>
 
-				<Box flexDirection="column" paddingX={1} marginTop={1}>
-					<Text color="yellow" bold>
+				<Box flexDirection="column" flexGrow={1} paddingX={2}>
+					<Text bold color="yellow">
 						Select a data source:
 					</Text>
 					<Box marginTop={1} flexDirection="column">
@@ -150,7 +150,7 @@ export default function DataSourceManager({
 					</Box>
 				</Box>
 
-				<Box paddingX={1} marginTop={1} flexDirection="column" gap={1}>
+				<Box paddingX={2} paddingBottom={1} flexDirection="column" gap={1}>
 					<Box borderStyle="round" borderColor="yellow" paddingX={1}>
 						<Text color="yellow">
 							⚠ AI can make mistakes. Verify queries before running.
@@ -165,30 +165,30 @@ export default function DataSourceManager({
 	if (mode === 'add-name') {
 		return (
 			<Box flexDirection="column" height={terminalHeight}>
-				<Box paddingX={1} paddingY={1}>
+				<Box paddingX={2} paddingY={1}>
 					<Text bold color="cyan">
 						Add Data Source
 					</Text>
 				</Box>
 
-				<Box flexDirection="column" flexGrow={1} paddingX={1}>
+				<Box flexDirection="column" flexGrow={1} paddingX={2}>
 					<Text color="yellow">Enter a name for this data source:</Text>
 					<Box marginTop={1}>
 						<Text color="cyan">❯ </Text>
 						<TextInput
-							value={sourceName}
-							onChange={setSourceName}
 							placeholder="e.g., Production DB"
+							value={sourceName}
 							onSubmit={() => {
 								if (sourceName.trim()) {
 									setMode('add-connection');
 								}
 							}}
+							onChange={setSourceName}
 						/>
 					</Box>
 				</Box>
 
-				<Box paddingX={1} paddingBottom={1}>
+				<Box paddingX={2} paddingBottom={1}>
 					<Text dimColor>Press Enter to continue • Ctrl+C to cancel</Text>
 				</Box>
 			</Box>
@@ -198,25 +198,25 @@ export default function DataSourceManager({
 	if (mode === 'add-connection') {
 		return (
 			<Box flexDirection="column" height={terminalHeight}>
-				<Box paddingX={1} paddingY={1}>
+				<Box paddingX={2} paddingY={1}>
 					<Text bold color="cyan">
 						Add Data Source
 					</Text>
 					<Text color="gray"> - {sourceName}</Text>
 				</Box>
 
-				<Box flexDirection="column" flexGrow={1} paddingX={1}>
+				<Box flexDirection="column" flexGrow={1} paddingX={2}>
 					<Text color="yellow">Enter the connection string:</Text>
 					<Box marginTop={1}>
 						<Text color="cyan">❯ </Text>
 						<TextInput
+							placeholder="postgres://user:pass@host:5432/database"
 							value={connectionString}
+							onSubmit={handleAddSource}
 							onChange={value => {
 								setConnectionString(value);
 								setError(null);
 							}}
-							placeholder="postgres://user:pass@host:5432/database"
-							onSubmit={handleAddSource}
 						/>
 					</Box>
 
@@ -241,7 +241,7 @@ export default function DataSourceManager({
 					</Box>
 				</Box>
 
-				<Box paddingX={1} paddingBottom={1}>
+				<Box paddingX={2} paddingBottom={1}>
 					<Text dimColor>
 						Press Enter to validate and add • Ctrl+C to cancel
 					</Text>

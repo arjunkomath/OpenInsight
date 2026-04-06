@@ -1,6 +1,6 @@
 import process from 'node:process';
 import React, {useState, useEffect} from 'react';
-import {Box, Text} from 'ink';
+import {Box, Text, useInput} from 'ink';
 import Spinner from 'ink-spinner';
 import DataSourceManager from './components/DataSourceManager.js';
 import QueryInterface from './components/QueryInterface.js';
@@ -20,7 +20,7 @@ import {
 const {OPENROUTER_KEY, OPENROUTER_MODEL = 'google/gemini-2.5-flash'} =
 	process.env;
 
-export default function App() {
+export default function App({onRequestQuit = () => {}}) {
 	const [appState, setAppState] = useState('manage-sources');
 	const [dataSources, setDataSources] = useState([]);
 	const [selectedSource, setSelectedSource] = useState(null);
@@ -33,6 +33,15 @@ export default function App() {
 		setDataSources(sources);
 		setLoading(false);
 	}, []);
+
+	useInput(
+		(input, key) => {
+			if (key.ctrl && input === 'c') {
+				onRequestQuit();
+			}
+		},
+		{isActive: appState !== 'query'},
+	);
 
 	const handleAddSource = source => {
 		const result = addDataSource(source);
@@ -99,7 +108,7 @@ export default function App() {
 
 	if (loading && dataSources.length === 0) {
 		return (
-			<Box padding={1}>
+			<Box paddingX={2} paddingY={1}>
 				<Text>Loading...</Text>
 			</Box>
 		);
@@ -117,13 +126,15 @@ export default function App() {
 
 	if (appState === 'loading-schema') {
 		return (
-			<Box padding={1} flexDirection="column">
+			<Box paddingX={2} paddingY={1} flexDirection="column">
 				<Text bold color="cyan">
 					{selectedSource.name}
 				</Text>
-				<Text>
-					<Spinner /> Loading database schema...
-				</Text>
+				<Box marginTop={1}>
+					<Text>
+						<Spinner /> Loading database schema...
+					</Text>
+				</Box>
 			</Box>
 		);
 	}
@@ -133,6 +144,7 @@ export default function App() {
 			<QueryInterface
 				hasApiKey={Boolean(OPENROUTER_KEY)}
 				model={OPENROUTER_MODEL}
+				onRequestQuit={onRequestQuit}
 				source={selectedSource}
 				sources={dataSources}
 				schema={schema}

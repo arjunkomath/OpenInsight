@@ -8,6 +8,7 @@ import {
 	renderTranscriptLines,
 	truncateStatus,
 } from '../utils/transcript.js';
+import {getQueryCtrlCAction} from '../utils/query-quit.js';
 
 export default function QueryInterface({
 	source,
@@ -21,6 +22,7 @@ export default function QueryInterface({
 	onLoadPresets,
 	onSavePreset,
 	onDeletePreset,
+	onRequestQuit,
 	hasApiKey,
 	model,
 }) {
@@ -47,6 +49,8 @@ export default function QueryInterface({
 	const [autoFollow, setAutoFollow] = useState(true);
 	const [pendingQuery, setPendingQuery] = useState(null);
 	const [lastExecutedSql, setLastExecutedSql] = useState(null);
+	const [awaitingQuitConfirmation, setAwaitingQuitConfirmation] =
+		useState(false);
 	const {stdout} = useStdout();
 	const terminalHeight = stdout?.rows || 24;
 	const terminalWidth = stdout?.columns || 80;
@@ -56,7 +60,7 @@ export default function QueryInterface({
 	});
 
 	const MAX_MESSAGES = 100;
-	const reservedRows = 6;
+	const reservedRows = 9;
 	const transcriptHeight = Math.max(terminalHeight - reservedRows, 4);
 	const transcriptWidth = Math.max(terminalWidth - 4, 20);
 
@@ -77,9 +81,14 @@ export default function QueryInterface({
 		setAutoFollow(true);
 	};
 
+	const resetQuitConfirmation = () => {
+		setAwaitingQuitConfirmation(false);
+	};
+
 	const executeConfirmedQuery = async () => {
 		clearInput();
 		pinToBottom();
+		resetQuitConfirmation();
 		setIsProcessing(true);
 		const {sql} = pendingQuery;
 		setPendingQuery(null);
@@ -97,6 +106,7 @@ export default function QueryInterface({
 	const cancelPendingQuery = () => {
 		clearInput();
 		pinToBottom();
+		resetQuitConfirmation();
 		addMessage({role: 'system', content: 'Query cancelled'});
 		setPendingQuery(null);
 	};
@@ -182,14 +192,47 @@ export default function QueryInterface({
 		setAutoFollow(clamped >= maxScrollTop);
 	};
 
-	useInput((input, key) => {
+	useInput((character, key) => {
+		const isCtrlC = key.ctrl && character === 'c';
+
+		if (isCtrlC) {
+			const ctrlCAction = getQueryCtrlCAction({
+				inputValue: input,
+				isProcessing,
+				awaitingQuitConfirmation,
+			});
+
+			if (ctrlCAction === 'ignore') {
+				return;
+			}
+
+			if (ctrlCAction === 'quit') {
+				onRequestQuit();
+				return;
+			}
+
+			if (ctrlCAction === 'clear-input') {
+				clearInput();
+				resetQuitConfirmation();
+				return;
+			}
+
+			pinToBottom();
+			setAwaitingQuitConfirmation(true);
+			return;
+		}
+
+		if (awaitingQuitConfirmation) {
+			resetQuitConfirmation();
+		}
+
 		if (pendingQuery && !isProcessing) {
-			if (input.toLowerCase() === 'y') {
+			if (character.toLowerCase() === 'y') {
 				executeConfirmedQuery();
 				return;
 			}
 
-			if (input.toLowerCase() === 'n' || key.escape) {
+			if (character.toLowerCase() === 'n' || key.escape) {
 				cancelPendingQuery();
 				return;
 			}
@@ -205,12 +248,12 @@ export default function QueryInterface({
 			return;
 		}
 
-		if (key.pageUp || (key.ctrl && input === 'u')) {
+		if (key.pageUp || (key.ctrl && character === 'u')) {
 			updateScrollTop(resolvedScrollTop - Math.max(1, transcriptHeight - 2));
 			return;
 		}
 
-		if (key.pageDown || (key.ctrl && input === 'd')) {
+		if (key.pageDown || (key.ctrl && character === 'd')) {
 			updateScrollTop(resolvedScrollTop + Math.max(1, transcriptHeight - 2));
 			return;
 		}
@@ -226,6 +269,8 @@ export default function QueryInterface({
 	});
 
 	const handleSubmit = async query => {
+		resetQuitConfirmation();
+
 		if (!query.trim() || isProcessing) return;
 
 		if (pendingQuery) {
@@ -454,21 +499,42 @@ export default function QueryInterface({
 		resolvedScrollTop + transcriptHeight,
 		transcriptLines.length,
 	);
-	const statusText = truncateStatus(
-		[
-			`Lines ${visibleRangeStart}-${visibleRangeEnd} of ${transcriptLines.length}`,
-			hiddenAbove > 0 ? `${hiddenAbove} above` : 'top',
-			hiddenBelow > 0 ? `${hiddenBelow} below` : 'following',
-			'↑↓ scroll',
-			'PgUp/PgDn page',
-			'Home/End top/bottom',
-		].join(' • '),
-		Math.max(terminalWidth - 4, 20),
-	);
+	const statusWidth = Math.max(terminalWidth - 4, 20);
+	const statusText = awaitingQuitConfirmation
+		? truncateStatus(
+				'Press Ctrl+C again to quit • Any other key to stay',
+				statusWidth,
+		  )
+		: truncateStatus(
+				[
+					`Lines ${visibleRangeStart}-${visibleRangeEnd} of ${transcriptLines.length}`,
+					hiddenAbove > 0 ? `${hiddenAbove} above` : 'top',
+					hiddenBelow > 0 ? `${hiddenBelow} below` : 'following',
+					'↑↓ scroll',
+					'PgUp/PgDn page',
+					'Home/End top/bottom',
+				].join(' • '),
+				statusWidth,
+		  );
+	const promptBorderColor = pendingQuery
+		? 'yellow'
+		: awaitingQuitConfirmation
+		? 'red'
+		: 'gray';
+	const promptColor = pendingQuery
+		? 'yellow'
+		: awaitingQuitConfirmation
+		? 'red'
+		: 'cyan';
+	const promptPlaceholder = pendingQuery
+		? 'Press Y to run, N to cancel'
+		: awaitingQuitConfirmation
+		? 'Press Ctrl+C again to quit'
+		: 'Ask a question about your data...';
 
 	return (
 		<Box flexDirection="column" height={terminalHeight}>
-			<Box paddingX={1}>
+			<Box paddingX={2} paddingTop={1} paddingBottom={1} flexShrink={0}>
 				<Text bold color="cyan">
 					{source.name}
 				</Text>
@@ -476,7 +542,7 @@ export default function QueryInterface({
 				{!hasApiKey && <Text color="red"> [No API Key]</Text>}
 			</Box>
 
-			<Box flexDirection="column" height={transcriptHeight} paddingX={1}>
+			<Box flexDirection="column" height={transcriptHeight} paddingX={2}>
 				{visibleLines.map(line => (
 					<Box key={line.key}>
 						{line.segments.map(segment => (
@@ -493,7 +559,7 @@ export default function QueryInterface({
 				))}
 			</Box>
 
-			<Box paddingX={1} flexShrink={0}>
+			<Box paddingX={2} paddingTop={1} flexShrink={0}>
 				{isProcessing ? (
 					<Text color="cyan">
 						<Spinner /> Thinking...
@@ -505,26 +571,30 @@ export default function QueryInterface({
 
 			<Box
 				borderStyle="single"
-				borderColor={pendingQuery ? 'yellow' : 'gray'}
-				paddingX={1}
-				marginX={1}
+				borderColor={promptBorderColor}
+				paddingX={2}
+				marginX={2}
+				marginTop={1}
 				flexShrink={0}
 			>
-				<Text color={pendingQuery ? 'yellow' : 'cyan'}>❯ </Text>
+				<Text color={promptColor}>❯ </Text>
 				<TextInput
 					key={inputKey}
-					placeholder={
-						pendingQuery
-							? 'Press Y to run, N to cancel'
-							: 'Ask a question about your data...'
-					}
+					placeholder={promptPlaceholder}
 					value={input}
-					onChange={value => !pendingQuery && setInput(value)}
+					onChange={value => {
+						if (pendingQuery) {
+							return;
+						}
+
+						resetQuitConfirmation();
+						setInput(value);
+					}}
 					onSubmit={handleSubmit}
 				/>
 			</Box>
 
-			<Box paddingX={2} flexShrink={0}>
+			<Box paddingX={2} paddingTop={1} flexShrink={0}>
 				<Text dimColor>📁 {process.cwd().split('/').pop()}</Text>
 				<Text dimColor> • </Text>
 				<Text color="green">● {source.name}</Text>

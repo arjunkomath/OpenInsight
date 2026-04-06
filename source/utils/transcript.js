@@ -23,6 +23,16 @@ const createLine = (lineKey, ...segments) => ({
 			: assignSegmentKeys(lineKey, BLANK_LINE.segments),
 });
 
+const pushSpacer = lines => {
+	const lastLine = lines.at(-1);
+	const isBlankLine =
+		lastLine?.segments?.length === 1 && lastLine.segments[0].text === ' ';
+
+	if (!isBlankLine && lines.length > 0) {
+		lines.push(createLine(`spacer-${lines.length}`, ...BLANK_LINE.segments));
+	}
+};
+
 const truncate = (text, width) => {
 	if (width <= 0) {
 		return '';
@@ -193,10 +203,7 @@ const renderAssistantMessage = (message, width) => {
 		'gray',
 	);
 
-	return [
-		...boxLines,
-		createLine(`assistant-blank-${message.content}`, ...BLANK_LINE.segments),
-	];
+	return boxLines;
 };
 
 const renderConfirmMessage = (message, width) => [
@@ -209,7 +216,6 @@ const renderConfirmMessage = (message, width) => [
 		width,
 		'green',
 	),
-	createLine(`confirm-blank-${message.content}`, ...BLANK_LINE.segments),
 ];
 
 export const renderTranscriptLines = (messages, {width}) => {
@@ -222,6 +228,7 @@ export const renderTranscriptLines = (messages, {width}) => {
 				color: 'cyan',
 				bold: true,
 			});
+			pushSpacer(lines);
 			continue;
 		}
 
@@ -234,6 +241,7 @@ export const renderTranscriptLines = (messages, {width}) => {
 
 		if (message.role === 'assistant') {
 			lines.push(...renderAssistantMessage(message, contentWidth));
+			pushSpacer(lines);
 			continue;
 		}
 
@@ -241,6 +249,7 @@ export const renderTranscriptLines = (messages, {width}) => {
 			appendWrappedLines(lines, `✗ ${message.content}`, contentWidth, {
 				color: 'red',
 			});
+			pushSpacer(lines);
 			continue;
 		}
 
@@ -248,12 +257,13 @@ export const renderTranscriptLines = (messages, {width}) => {
 			appendWrappedLines(lines, message.content, contentWidth, {
 				color: 'yellow',
 			});
-			lines.push(BLANK_LINE);
+			pushSpacer(lines);
 			continue;
 		}
 
 		if (message.role === 'confirm') {
 			lines.push(...renderConfirmMessage(message, contentWidth));
+			pushSpacer(lines);
 		}
 	}
 
