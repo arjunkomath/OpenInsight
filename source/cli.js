@@ -1,11 +1,8 @@
-#!/usr/bin/env node
-import React from 'react';
-import {render} from 'ink';
+#!/usr/bin/env bun
+import {createCliRenderer} from '@opentui/core';
+import {createRoot} from '@opentui/react';
 import meow from 'meow';
 import App from './app.js';
-
-const enterAltScreen = '\x1b[?1049h';
-const leaveAltScreen = '\x1b[?1049l';
 
 meow(
 	`
@@ -23,34 +20,22 @@ meow(
 	},
 );
 
-process.stdout.write(enterAltScreen);
-process.stdout.write('\x1b[H');
-
-let hasCleanedUp = false;
-
-const cleanup = () => {
-	if (hasCleanedUp) {
-		return;
-	}
-
-	hasCleanedUp = true;
-	process.stdout.write(leaveAltScreen);
-};
-
-const requestQuit = () => {
-	unmount();
-	cleanup();
-	process.exit(0);
-};
-
-const {unmount, waitUntilExit} = render(<App onRequestQuit={requestQuit} />, {
+const renderer = await createCliRenderer({
 	exitOnCtrlC: false,
 });
 
-process.on('exit', cleanup);
-process.on('SIGINT', requestQuit);
-process.on('SIGTERM', requestQuit);
+let hasExited = false;
 
-waitUntilExit().then(() => {
-	cleanup();
-});
+const exit = () => {
+	if (hasExited) return;
+	hasExited = true;
+	root.unmount();
+	renderer.destroy();
+	process.exit(0);
+};
+
+const root = createRoot(renderer);
+root.render(<App onRequestQuit={exit} />);
+
+process.on('SIGINT', exit);
+process.on('SIGTERM', exit);

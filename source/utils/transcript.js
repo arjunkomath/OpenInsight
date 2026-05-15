@@ -190,7 +190,7 @@ const renderAssistantMessage = (message, width) => {
 						color: line.segments[0]?.color,
 						bold: line.segments[0]?.bold,
 						dimColor: line.segments[0]?.dimColor,
-				  }))
+					}))
 				: []),
 			...(message.resultCount === 0
 				? [{text: 'No results', dimColor: true}]
@@ -275,7 +275,7 @@ export const renderTranscriptLines = (messages, {width}) => {
 						'empty-transcript',
 						createSegment('No messages yet.', {dimColor: true}),
 					),
-			  ];
+				];
 
 	return transcriptLines.map((line, index) =>
 		createLine(

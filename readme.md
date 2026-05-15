@@ -7,9 +7,11 @@
 
 ## Quick Start
 
+OpenInsight runs on [Bun](https://bun.sh/) (>=1.3). Install Bun first if you don't have it.
+
 ```bash
 # 1. Install
-npm i -g openinsight
+bun add -g openinsight
 
 # 2. Set your OpenRouter API key
 export OPENROUTER_KEY=sk-...

@@ -1,46 +1,42 @@
-import test from 'ava';
+import {test, expect} from 'bun:test';
 import {getQueryCtrlCAction} from '../source/utils/query-quit.js';
 
-test('Ctrl+C clears a non-empty query draft first', t => {
-	t.is(
+test('Ctrl+C clears a non-empty query draft first', () => {
+	expect(
 		getQueryCtrlCAction({
 			inputValue: 'select users',
 			isProcessing: false,
 			awaitingQuitConfirmation: false,
 		}),
-		'clear-input',
-	);
+	).toBe('clear-input');
 });
 
-test('Ctrl+C starts quit confirmation when the input is empty', t => {
-	t.is(
+test('Ctrl+C starts quit confirmation when the input is empty', () => {
+	expect(
 		getQueryCtrlCAction({
 			inputValue: '',
 			isProcessing: false,
 			awaitingQuitConfirmation: false,
 		}),
-		'confirm-quit',
-	);
+	).toBe('confirm-quit');
 });
 
-test('second Ctrl+C quits once confirmation is active', t => {
-	t.is(
+test('second Ctrl+C quits once confirmation is active', () => {
+	expect(
 		getQueryCtrlCAction({
 			inputValue: '',
 			isProcessing: false,
 			awaitingQuitConfirmation: true,
 		}),
-		'quit',
-	);
+	).toBe('quit');
 });
 
-test('Ctrl+C is ignored while a query is processing', t => {
-	t.is(
+test('Ctrl+C is ignored while a query is processing', () => {
+	expect(
 		getQueryCtrlCAction({
 			inputValue: '',
 			isProcessing: true,
 			awaitingQuitConfirmation: false,
 		}),
-		'ignore',
-	);
+	).toBe('ignore');
 });
