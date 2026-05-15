@@ -1,14 +1,46 @@
 import process from 'node:process';
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {Box, Text, useStdout, useInput} from 'ink';
-import Spinner from 'ink-spinner';
-import TextInput from 'ink-text-input';
+import {useKeyboard, useTerminalDimensions} from '@opentui/react';
+import {TextAttributes} from '@opentui/core';
+import Spinner from './Spinner.js';
+import {theme, resolveColor} from '../theme.js';
 import {
 	getVisibleLineWindow,
 	renderTranscriptLines,
 	truncateStatus,
 } from '../utils/transcript.js';
 import {getQueryCtrlCAction} from '../utils/query-quit.js';
+
+const BOLD = TextAttributes.BOLD;
+const DIM = TextAttributes.DIM;
+
+function segmentAttributes(segment) {
+	let attrs = 0;
+	if (segment.bold) attrs |= BOLD;
+	if (segment.dimColor) attrs |= DIM;
+	return attrs;
+}
+
+function segmentColor(segment) {
+	if (segment.color) return resolveColor(segment.color);
+	return theme.default;
+}
+
+function TranscriptLine({line}) {
+	return (
+		<text>
+			{line.segments.map((segment, index) => (
+				<span
+					key={index}
+					fg={segmentColor(segment)}
+					attributes={segmentAttributes(segment)}
+				>
+					{segment.text}
+				</span>
+			))}
+		</text>
+	);
+}
 
 export default function QueryInterface({
 	source,
@@ -53,9 +85,8 @@ export default function QueryInterface({
 	const [lastExecutedSql, setLastExecutedSql] = useState(null);
 	const [awaitingQuitConfirmation, setAwaitingQuitConfirmation] =
 		useState(false);
-	const {stdout} = useStdout();
-	const terminalHeight = stdout?.rows || 24;
-	const terminalWidth = stdout?.columns || 80;
+	const {width: terminalWidth, height: terminalHeight} =
+		useTerminalDimensions();
 	const previousMetricsRef = useRef({
 		lineCount: 0,
 		transcriptHeight: 0,
@@ -200,7 +231,7 @@ export default function QueryInterface({
 					data: prepareTableData(message.data),
 					resultCount: message.data.length,
 					moreRows: Math.max(message.data.length - maxTableRows, 0),
-			  }
+				}
 			: message,
 	);
 
@@ -248,8 +279,21 @@ export default function QueryInterface({
 		setAutoFollow(clamped >= maxScrollTop);
 	};
 
-	useInput((character, key) => {
-		const isCtrlC = key.ctrl && character === 'c';
+	const handleMouseScroll = event => {
+		const scroll = event.scroll;
+		if (!scroll) return;
+		const step = Math.max(1, scroll.delta || 1) * 3;
+		if (scroll.direction === 'up') {
+			updateScrollTop(resolvedScrollTop - step);
+		} else if (scroll.direction === 'down') {
+			updateScrollTop(resolvedScrollTop + step);
+		}
+	};
+
+	useKeyboard(key => {
+		const keyName =
+			typeof key.name === 'string' ? key.name.toLowerCase() : key.name;
+		const isCtrlC = key.ctrl && keyName === 'c';
 
 		if (isCtrlC) {
 			const ctrlCAction = getQueryCtrlCAction({
@@ -258,9 +302,7 @@ export default function QueryInterface({
 				awaitingQuitConfirmation,
 			});
 
-			if (ctrlCAction === 'ignore') {
-				return;
-			}
+			if (ctrlCAction === 'ignore') return;
 
 			if (ctrlCAction === 'quit') {
 				onRequestQuit();
@@ -278,7 +320,7 @@ export default function QueryInterface({
 			return;
 		}
 
-		if (key.escape && isProcessing) {
+		if (keyName === 'escape' && isProcessing) {
 			cancelActiveProcessing();
 			return;
 		}
@@ -288,43 +330,43 @@ export default function QueryInterface({
 		}
 
 		if (pendingQuery && !isProcessing) {
-			if (character.toLowerCase() === 'y') {
+			if (keyName === 'y') {
 				executeConfirmedQuery();
 				return;
 			}
 
-			if (character.toLowerCase() === 'n' || key.escape) {
+			if (keyName === 'n' || keyName === 'escape') {
 				cancelPendingQuery();
 				return;
 			}
 		}
 
-		if (key.upArrow) {
+		if (keyName === 'up') {
 			updateScrollTop(resolvedScrollTop - 1);
 			return;
 		}
 
-		if (key.downArrow) {
+		if (keyName === 'down') {
 			updateScrollTop(resolvedScrollTop + 1);
 			return;
 		}
 
-		if (key.pageUp || (key.ctrl && character === 'u')) {
+		if (keyName === 'pageup' || (key.ctrl && keyName === 'u')) {
 			updateScrollTop(resolvedScrollTop - Math.max(1, transcriptHeight - 2));
 			return;
 		}
 
-		if (key.pageDown || (key.ctrl && character === 'd')) {
+		if (keyName === 'pagedown' || (key.ctrl && keyName === 'd')) {
 			updateScrollTop(resolvedScrollTop + Math.max(1, transcriptHeight - 2));
 			return;
 		}
 
-		if (key.home) {
+		if (keyName === 'home') {
 			updateScrollTop(0);
 			return;
 		}
 
-		if (key.end) {
+		if (keyName === 'end') {
 			updateScrollTop(maxScrollTop);
 		}
 	});
@@ -334,9 +376,7 @@ export default function QueryInterface({
 
 		if (!query.trim() || isProcessing) return;
 
-		if (pendingQuery) {
-			return;
-		}
+		if (pendingQuery) return;
 
 		addMessage({role: 'user', content: query});
 		clearInput();
@@ -579,7 +619,7 @@ export default function QueryInterface({
 		? truncateStatus(
 				'Press Ctrl+C again to quit • Any other key to stay',
 				statusWidth,
-		  )
+			)
 		: truncateStatus(
 				[
 					`Lines ${visibleRangeStart}-${visibleRangeEnd} of ${transcriptLines.length}`,
@@ -590,101 +630,126 @@ export default function QueryInterface({
 					'Home/End top/bottom',
 				].join(' • '),
 				statusWidth,
-		  );
+			);
 	const promptBorderColor = pendingQuery
-		? 'yellow'
+		? theme.yellow
 		: awaitingQuitConfirmation
-		? 'red'
-		: 'gray';
+			? theme.red
+			: theme.gray;
 	const promptColor = pendingQuery
-		? 'yellow'
+		? theme.yellow
 		: awaitingQuitConfirmation
-		? 'red'
-		: 'cyan';
+			? theme.red
+			: theme.cyan;
 	const promptPlaceholder = pendingQuery
 		? 'Press Y to run, N to cancel'
 		: awaitingQuitConfirmation
-		? 'Press Ctrl+C again to quit'
-		: isProcessing
-		? 'Processing... Press Esc to cancel'
-		: 'Ask a question about your data...';
+			? 'Press Ctrl+C again to quit'
+			: isProcessing
+				? 'Processing... Press Esc to cancel'
+				: 'Ask a question about your data...';
 	const processingText = isCancelling
 		? activeOperation === 'execution'
 			? 'Cancelling query execution...'
 			: 'Cancelling inference...'
 		: activeOperation === 'execution'
-		? 'Running query... Press Esc to cancel'
-		: 'Thinking... Press Esc to cancel';
+			? 'Running query... Press Esc to cancel'
+			: 'Thinking... Press Esc to cancel';
+	const inputDisabled = Boolean(pendingQuery) || isProcessing;
 
 	return (
-		<Box flexDirection="column" height={terminalHeight}>
-			<Box paddingX={2} paddingTop={1} paddingBottom={1} flexShrink={0}>
-				<Text bold color="cyan">
-					{source.name}
-				</Text>
-				<Text color="gray"> ({source.type})</Text>
-				{!hasApiKey && <Text color="red"> [No API Key]</Text>}
-			</Box>
-
-			<Box flexDirection="column" height={transcriptHeight} paddingX={2}>
-				{visibleLines.map(line => (
-					<Box key={line.key}>
-						{line.segments.map(segment => (
-							<Text
-								key={segment.key}
-								color={segment.color}
-								bold={segment.bold}
-								dimColor={segment.dimColor}
-							>
-								{segment.text}
-							</Text>
-						))}
-					</Box>
-				))}
-			</Box>
-
-			<Box paddingX={2} paddingTop={1} flexShrink={0}>
-				{isProcessing ? (
-					<Text color="cyan">
-						<Spinner /> {processingText}
-					</Text>
-				) : (
-					<Text dimColor>{statusText}</Text>
-				)}
-			</Box>
-
-			<Box
-				borderStyle="single"
-				borderColor={promptBorderColor}
-				paddingX={2}
-				marginX={2}
-				marginTop={1}
-				flexShrink={0}
+		<box style={{flexDirection: 'column', height: terminalHeight}}>
+			<box
+				style={{
+					paddingX: 2,
+					paddingTop: 1,
+					paddingBottom: 1,
+					flexShrink: 0,
+					flexDirection: 'row',
+				}}
 			>
-				<Text color={promptColor}>❯ </Text>
-				<TextInput
+				<text fg={theme.cyan} attributes={BOLD}>
+					{source.name}
+				</text>
+				<text fg={theme.gray}> ({source.type})</text>
+				{!hasApiKey && <text fg={theme.red}> [No API Key]</text>}
+			</box>
+
+			<box
+				style={{
+					flexDirection: 'column',
+					height: transcriptHeight,
+					paddingX: 2,
+				}}
+				onMouseScroll={handleMouseScroll}
+			>
+				{visibleLines.map((line, index) => (
+					<TranscriptLine key={`${line.key}-${index}`} line={line} />
+				))}
+			</box>
+
+			<box style={{paddingX: 2, paddingTop: 1, flexShrink: 0, height: 1}}>
+				{isProcessing ? (
+					<text fg={theme.cyan}>
+						<Spinner /> {processingText}
+					</text>
+				) : (
+					<text fg={theme.default} attributes={DIM}>
+						{statusText}
+					</text>
+				)}
+			</box>
+
+			<box
+				style={{
+					borderStyle: 'single',
+					borderColor: promptBorderColor,
+					paddingX: 2,
+					marginX: 2,
+					marginTop: 1,
+					flexShrink: 0,
+					flexDirection: 'row',
+					height: 3,
+				}}
+			>
+				<text fg={promptColor}>❯ </text>
+				<input
 					key={inputKey}
+					focused={!inputDisabled}
+					style={{flexGrow: 1}}
 					placeholder={promptPlaceholder}
 					value={input}
-					onChange={value => {
-						if (pendingQuery) {
-							return;
-						}
-
+					onInput={value => {
+						if (pendingQuery) return;
 						resetQuitConfirmation();
 						setInput(value);
 					}}
 					onSubmit={handleSubmit}
 				/>
-			</Box>
+			</box>
 
-			<Box paddingX={2} paddingTop={1} flexShrink={0}>
-				<Text dimColor>📁 {process.cwd().split('/').pop()}</Text>
-				<Text dimColor> • </Text>
-				<Text color="green">● {source.name}</Text>
-				<Text dimColor> • </Text>
-				<Text dimColor>⚡ {model.split('/').pop()}</Text>
-			</Box>
-		</Box>
+			<box
+				style={{
+					paddingX: 2,
+					paddingTop: 1,
+					flexShrink: 0,
+					flexDirection: 'row',
+				}}
+			>
+				<text fg={theme.default} attributes={DIM}>
+					📁 {process.cwd().split('/').pop()}
+				</text>
+				<text fg={theme.default} attributes={DIM}>
+					{' • '}
+				</text>
+				<text fg={theme.green}>● {source.name}</text>
+				<text fg={theme.default} attributes={DIM}>
+					{' • '}
+				</text>
+				<text fg={theme.default} attributes={DIM}>
+					⚡ {model.split('/').pop()}
+				</text>
+			</box>
+		</box>
 	);
 }

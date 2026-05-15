@@ -1,12 +1,15 @@
 import React, {useState} from 'react';
-import {Box, Text, useStdout} from 'ink';
-import SelectInput from 'ink-select-input';
-import TextInput from 'ink-text-input';
-import Spinner from 'ink-spinner';
+import {useTerminalDimensions} from '@opentui/react';
+import {TextAttributes} from '@opentui/core';
+import Spinner from './Spinner.js';
+import {theme} from '../theme.js';
 import {
 	testConnection,
 	validateConnectionString,
 } from '../utils/DbConnector.js';
+
+const BOLD = TextAttributes.BOLD;
+const DIM = TextAttributes.DIM;
 
 export default function DataSourceManager({
 	sources,
@@ -18,15 +21,15 @@ export default function DataSourceManager({
 	const [connectionString, setConnectionString] = useState('');
 	const [isValidating, setIsValidating] = useState(false);
 	const [error, setError] = useState(null);
-	const {stdout} = useStdout();
-	const terminalHeight = stdout?.rows || 24;
+	const {height: terminalHeight} = useTerminalDimensions();
 
-	const handleAddSource = async () => {
-		if (!connectionString.trim() || isValidating) return;
+	const handleAddSource = async value => {
+		const connection = value ?? connectionString;
+		if (!connection.trim() || isValidating) return;
 
 		setError(null);
 
-		const validation = validateConnectionString(connectionString);
+		const validation = validateConnectionString(connection);
 		if (!validation.isValid) {
 			setError(validation.error);
 			return;
@@ -34,7 +37,7 @@ export default function DataSourceManager({
 
 		setIsValidating(true);
 
-		const result = await testConnection(connectionString);
+		const result = await testConnection(connection);
 
 		setIsValidating(false);
 
@@ -46,7 +49,7 @@ export default function DataSourceManager({
 		const newSource = {
 			id: crypto.randomUUID(),
 			name: sourceName,
-			connectionString,
+			connectionString: connection,
 			type: validation.protocol,
 		};
 
@@ -66,24 +69,47 @@ export default function DataSourceManager({
 
 		if (!hasSources) {
 			return (
-				<Box flexDirection="column" height={terminalHeight}>
-					<Box paddingX={2} paddingY={1}>
-						<Text bold color="cyan">
+				<box style={{flexDirection: 'column', height: terminalHeight}}>
+					<box style={{paddingX: 2, paddingY: 1, flexDirection: 'row'}}>
+						<text fg={theme.cyan} attributes={BOLD}>
 							OPEN
-						</Text>
-						<Text bold color="magenta">
+						</text>
+						<text fg={theme.magenta} attributes={BOLD}>
 							INSIGHT
-						</Text>
-					</Box>
+						</text>
+					</box>
 
-					<Box flexDirection="column" flexGrow={1} paddingX={2} gap={1}>
-						<Box flexDirection="column">
-							<Text color="yellow">No data sources configured.</Text>
-							<Text>Add a database connection to get started.</Text>
-						</Box>
-						<Box>
-							<SelectInput
-								items={[{label: '→ Add a data source', value: 'add'}]}
+					<box
+						style={{
+							flexDirection: 'column',
+							flexGrow: 1,
+							paddingX: 2,
+							gap: 1,
+						}}
+					>
+						<box style={{flexDirection: 'column'}}>
+							<text fg={theme.yellow}>No data sources configured.</text>
+							<text fg={theme.default}>
+								Add a database connection to get started.
+							</text>
+						</box>
+						<box>
+							<select
+								focused
+								height={3}
+								width={32}
+								backgroundColor={theme.defaultBackground}
+								textColor={theme.default}
+								selectedBackgroundColor={theme.blue}
+								selectedTextColor={theme.brightWhite}
+								options={[
+									{
+										name: '→ Add a data source',
+										description: '',
+										value: 'add',
+									},
+								]}
+								showDescription={false}
 								onSelect={() => {
 									setMode('add-name');
 									setSourceName('');
@@ -91,162 +117,212 @@ export default function DataSourceManager({
 									setError(null);
 								}}
 							/>
-						</Box>
-					</Box>
+						</box>
+					</box>
 
-					<Box paddingX={2} paddingBottom={1} flexDirection="column" gap={1}>
-						<Box borderStyle="round" borderColor="yellow" paddingX={1}>
-							<Text color="yellow">
+					<box
+						style={{
+							paddingX: 2,
+							paddingBottom: 1,
+							flexDirection: 'column',
+							gap: 1,
+						}}
+					>
+						<box
+							style={{
+								borderStyle: 'rounded',
+								borderColor: theme.yellow,
+								paddingX: 1,
+							}}
+						>
+							<text fg={theme.yellow}>
 								⚠ AI can make mistakes. Verify queries before running.
-							</Text>
-						</Box>
-						<Text dimColor>Press Ctrl+C to exit</Text>
-					</Box>
-				</Box>
+							</text>
+						</box>
+						<text fg={theme.default} attributes={DIM}>
+							Press Ctrl+C to exit
+						</text>
+					</box>
+				</box>
 			);
 		}
 
 		const items = sources.map(source => ({
-			key: source.id,
-			label: `  ${source.name} (${source.type})`,
+			name: `  ${source.name} (${source.type})`,
+			description: '',
 			value: source,
 		}));
 
 		items.push({
-			key: 'add',
-			label: '+ Add new data source',
+			name: '+ Add new data source',
+			description: '',
 			value: 'add',
 		});
 
-		return (
-			<Box flexDirection="column" height={terminalHeight}>
-				<Box paddingX={2} paddingY={1}>
-					<Text bold color="cyan">
-						OPEN
-					</Text>
-					<Text bold color="magenta">
-						INSIGHT
-					</Text>
-				</Box>
+		const listHeight = Math.max(Math.min(items.length + 1, 12), 4);
 
-				<Box flexDirection="column" flexGrow={1} paddingX={2}>
-					<Text bold color="yellow">
+		return (
+			<box style={{flexDirection: 'column', height: terminalHeight}}>
+				<box style={{paddingX: 2, paddingY: 1, flexDirection: 'row'}}>
+					<text fg={theme.cyan} attributes={BOLD}>
+						OPEN
+					</text>
+					<text fg={theme.magenta} attributes={BOLD}>
+						INSIGHT
+					</text>
+				</box>
+
+				<box style={{flexDirection: 'column', flexGrow: 1, paddingX: 2}}>
+					<text fg={theme.yellow} attributes={BOLD}>
 						Select a data source:
-					</Text>
-					<Box marginTop={1} flexDirection="column">
-						<SelectInput
-							items={items}
-							onSelect={item => {
-								if (item.value === 'add') {
+					</text>
+					<box style={{marginTop: 1, flexDirection: 'column'}}>
+						<select
+							focused
+							height={listHeight}
+							width={48}
+							backgroundColor={theme.defaultBackground}
+							textColor={theme.default}
+							selectedBackgroundColor={theme.blue}
+							selectedTextColor={theme.brightWhite}
+							options={items}
+							showDescription={false}
+							onSelect={(_index, option) => {
+								if (!option) return;
+								if (option.value === 'add') {
 									setMode('add-name');
 									setSourceName('');
 									setConnectionString('');
 									setError(null);
 								} else {
-									onSelectSource(item.value);
+									onSelectSource(option.value);
 								}
 							}}
 						/>
-					</Box>
-				</Box>
+					</box>
+				</box>
 
-				<Box paddingX={2} paddingBottom={1} flexDirection="column" gap={1}>
-					<Box borderStyle="round" borderColor="yellow" paddingX={1}>
-						<Text color="yellow">
+				<box
+					style={{
+						paddingX: 2,
+						paddingBottom: 1,
+						flexDirection: 'column',
+						gap: 1,
+					}}
+				>
+					<box
+						style={{
+							borderStyle: 'rounded',
+							borderColor: theme.yellow,
+							paddingX: 1,
+						}}
+					>
+						<text fg={theme.yellow}>
 							⚠ AI can make mistakes. Verify queries before running.
-						</Text>
-					</Box>
-					<Text dimColor>Press Ctrl+C to exit</Text>
-				</Box>
-			</Box>
+						</text>
+					</box>
+					<text fg={theme.default} attributes={DIM}>
+						Press Ctrl+C to exit
+					</text>
+				</box>
+			</box>
 		);
 	}
 
 	if (mode === 'add-name') {
 		return (
-			<Box flexDirection="column" height={terminalHeight}>
-				<Box paddingX={2} paddingY={1}>
-					<Text bold color="cyan">
+			<box style={{flexDirection: 'column', height: terminalHeight}}>
+				<box style={{paddingX: 2, paddingY: 1}}>
+					<text fg={theme.cyan} attributes={BOLD}>
 						Add Data Source
-					</Text>
-				</Box>
+					</text>
+				</box>
 
-				<Box flexDirection="column" flexGrow={1} paddingX={2}>
-					<Text color="yellow">Enter a name for this data source:</Text>
-					<Box marginTop={1}>
-						<Text color="cyan">❯ </Text>
-						<TextInput
+				<box style={{flexDirection: 'column', flexGrow: 1, paddingX: 2}}>
+					<text fg={theme.yellow}>Enter a name for this data source:</text>
+					<box style={{marginTop: 1, flexDirection: 'row', height: 1}}>
+						<text fg={theme.cyan}>❯ </text>
+						<input
+							focused
+							style={{width: 40}}
 							placeholder="e.g., Production DB"
 							value={sourceName}
-							onSubmit={() => {
-								if (sourceName.trim()) {
+							onInput={setSourceName}
+							onSubmit={value => {
+								if (value.trim()) {
+									setSourceName(value);
 									setMode('add-connection');
 								}
 							}}
-							onChange={setSourceName}
 						/>
-					</Box>
-				</Box>
+					</box>
+				</box>
 
-				<Box paddingX={2} paddingBottom={1}>
-					<Text dimColor>Press Enter to continue • Ctrl+C to cancel</Text>
-				</Box>
-			</Box>
+				<box style={{paddingX: 2, paddingBottom: 1}}>
+					<text fg={theme.default} attributes={DIM}>
+						Press Enter to continue • Ctrl+C to cancel
+					</text>
+				</box>
+			</box>
 		);
 	}
 
 	if (mode === 'add-connection') {
 		return (
-			<Box flexDirection="column" height={terminalHeight}>
-				<Box paddingX={2} paddingY={1}>
-					<Text bold color="cyan">
+			<box style={{flexDirection: 'column', height: terminalHeight}}>
+				<box style={{paddingX: 2, paddingY: 1, flexDirection: 'row'}}>
+					<text fg={theme.cyan} attributes={BOLD}>
 						Add Data Source
-					</Text>
-					<Text color="gray"> - {sourceName}</Text>
-				</Box>
+					</text>
+					<text fg={theme.gray}> - {sourceName}</text>
+				</box>
 
-				<Box flexDirection="column" flexGrow={1} paddingX={2}>
-					<Text color="yellow">Enter the connection string:</Text>
-					<Box marginTop={1}>
-						<Text color="cyan">❯ </Text>
-						<TextInput
+				<box style={{flexDirection: 'column', flexGrow: 1, paddingX: 2}}>
+					<text fg={theme.yellow}>Enter the connection string:</text>
+					<box style={{marginTop: 1, flexDirection: 'row', height: 1}}>
+						<text fg={theme.cyan}>❯ </text>
+						<input
+							focused
+							style={{width: 60}}
 							placeholder="postgres://user:pass@host:5432/database"
 							value={connectionString}
-							onSubmit={handleAddSource}
-							onChange={value => {
+							onInput={value => {
 								setConnectionString(value);
 								setError(null);
 							}}
+							onSubmit={handleAddSource}
 						/>
-					</Box>
+					</box>
 
 					{isValidating && (
-						<Box marginTop={1}>
-							<Text>
+						<box style={{marginTop: 1}}>
+							<text>
 								<Spinner /> Testing connection...
-							</Text>
-						</Box>
+							</text>
+						</box>
 					)}
 
 					{error && (
-						<Box marginTop={1}>
-							<Text color="red">Error: {error}</Text>
-						</Box>
+						<box style={{marginTop: 1}}>
+							<text fg={theme.red}>Error: {error}</text>
+						</box>
 					)}
 
-					<Box marginTop={2}>
-						<Text dimColor>
+					<box style={{marginTop: 2}}>
+						<text fg={theme.default} attributes={DIM}>
 							Supported: postgres://, mysql://, sqlite://, mariadb://
-						</Text>
-					</Box>
-				</Box>
+						</text>
+					</box>
+				</box>
 
-				<Box paddingX={2} paddingBottom={1}>
-					<Text dimColor>
+				<box style={{paddingX: 2, paddingBottom: 1}}>
+					<text fg={theme.default} attributes={DIM}>
 						Press Enter to validate and add • Ctrl+C to cancel
-					</Text>
-				</Box>
-			</Box>
+					</text>
+				</box>
+			</box>
 		);
 	}
+
+	return null;
 }

@@ -1,26 +1,26 @@
-import test from 'ava';
+import {test, expect} from 'bun:test';
 import {
 	getVisibleLineWindow,
 	renderTranscriptLines,
 	wrapText,
 } from '../source/utils/transcript.js';
 
-test('wrapText splits long lines by width', t => {
-	t.deepEqual(wrapText('abcdefgh', 3), ['abc', 'def', 'gh']);
+test('wrapText splits long lines by width', () => {
+	expect(wrapText('abcdefgh', 3)).toEqual(['abc', 'def', 'gh']);
 });
 
-test('getVisibleLineWindow clamps scroll position and pads viewport', t => {
+test('getVisibleLineWindow clamps scroll position and pads viewport', () => {
 	const lines = [{segments: [{text: '1'}]}, {segments: [{text: '2'}]}];
 	const window = getVisibleLineWindow(lines, 99, 4);
 
-	t.is(window.scrollTop, 0);
-	t.is(window.maxScrollTop, 0);
-	t.is(window.visibleLines.length, 4);
-	t.is(window.visibleLines[0].segments[0].text, '1');
-	t.is(window.visibleLines[1].segments[0].text, '2');
+	expect(window.scrollTop).toBe(0);
+	expect(window.maxScrollTop).toBe(0);
+	expect(window.visibleLines.length).toBe(4);
+	expect(window.visibleLines[0].segments[0].text).toBe('1');
+	expect(window.visibleLines[1].segments[0].text).toBe('2');
 });
 
-test('renderTranscriptLines shows empty query results explicitly', t => {
+test('renderTranscriptLines shows empty query results explicitly', () => {
 	const lines = renderTranscriptLines(
 		[
 			{
@@ -34,9 +34,9 @@ test('renderTranscriptLines shows empty query results explicitly', t => {
 		{width: 40},
 	);
 
-	t.true(
+	expect(
 		lines.some(line =>
 			line.segments.some(segment => segment.text.includes('No results')),
 		),
-	);
+	).toBe(true);
 });

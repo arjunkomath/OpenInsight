@@ -1,9 +1,10 @@
 import process from 'node:process';
 import React, {useState, useEffect} from 'react';
-import {Box, Text, useInput} from 'ink';
-import Spinner from 'ink-spinner';
+import {useKeyboard} from '@opentui/react';
 import DataSourceManager from './components/DataSourceManager.js';
 import QueryInterface from './components/QueryInterface.js';
+import Spinner from './components/Spinner.js';
+import {theme} from './theme.js';
 import {
 	loadDataSources,
 	addDataSource,
@@ -34,14 +35,14 @@ export default function App({onRequestQuit = () => {}}) {
 		setLoading(false);
 	}, []);
 
-	useInput(
-		(input, key) => {
-			if (key.ctrl && input === 'c') {
-				onRequestQuit();
-			}
-		},
-		{isActive: appState !== 'query'},
-	);
+	useKeyboard(key => {
+		if (appState === 'query') return;
+		const keyName =
+			typeof key.name === 'string' ? key.name.toLowerCase() : key.name;
+		if (key.ctrl && keyName === 'c') {
+			onRequestQuit();
+		}
+	});
 
 	const handleAddSource = source => {
 		const result = addDataSource(source);
@@ -110,9 +111,9 @@ export default function App({onRequestQuit = () => {}}) {
 
 	if (loading && dataSources.length === 0) {
 		return (
-			<Box paddingX={2} paddingY={1}>
-				<Text>Loading...</Text>
-			</Box>
+			<box style={{paddingX: 2, paddingY: 1}}>
+				<text>Loading...</text>
+			</box>
 		);
 	}
 
@@ -128,16 +129,16 @@ export default function App({onRequestQuit = () => {}}) {
 
 	if (appState === 'loading-schema') {
 		return (
-			<Box paddingX={2} paddingY={1} flexDirection="column">
-				<Text bold color="cyan">
+			<box style={{paddingX: 2, paddingY: 1, flexDirection: 'column'}}>
+				<text fg={theme.cyan} attributes={1}>
 					{selectedSource.name}
-				</Text>
-				<Box marginTop={1}>
-					<Text>
+				</text>
+				<box style={{marginTop: 1}}>
+					<text>
 						<Spinner /> Loading database schema...
-					</Text>
-				</Box>
-			</Box>
+					</text>
+				</box>
+			</box>
 		);
 	}
 
