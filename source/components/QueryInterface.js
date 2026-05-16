@@ -656,6 +656,14 @@ export default function QueryInterface({
 			? 'Running query... Press Esc to cancel'
 			: 'Thinking... Press Esc to cancel';
 	const inputDisabled = Boolean(pendingQuery) || isProcessing;
+	const inputColors = {
+		backgroundColor: theme.transparent,
+		focusedBackgroundColor: theme.transparent,
+		textColor: theme.default,
+		focusedTextColor: theme.default,
+		placeholderColor: theme.gray,
+		cursorColor: promptColor,
+	};
 
 	return (
 		<box style={{flexDirection: 'column', height: terminalHeight}}>
@@ -717,6 +725,7 @@ export default function QueryInterface({
 					key={inputKey}
 					focused={!inputDisabled}
 					style={{flexGrow: 1}}
+					{...inputColors}
 					placeholder={promptPlaceholder}
 					value={input}
 					onInput={value => {

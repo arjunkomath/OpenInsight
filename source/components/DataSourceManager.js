@@ -22,6 +22,22 @@ export default function DataSourceManager({
 	const [isValidating, setIsValidating] = useState(false);
 	const [error, setError] = useState(null);
 	const {height: terminalHeight} = useTerminalDimensions();
+	const selectColors = {
+		backgroundColor: theme.transparent,
+		focusedBackgroundColor: theme.transparent,
+		textColor: theme.default,
+		focusedTextColor: theme.default,
+		selectedBackgroundColor: theme.transparent,
+		selectedTextColor: theme.cyan,
+	};
+	const inputColors = {
+		backgroundColor: theme.transparent,
+		focusedBackgroundColor: theme.transparent,
+		textColor: theme.default,
+		focusedTextColor: theme.default,
+		placeholderColor: theme.gray,
+		cursorColor: theme.cyan,
+	};
 
 	const handleAddSource = async value => {
 		const connection = value ?? connectionString;
@@ -98,10 +114,7 @@ export default function DataSourceManager({
 								focused
 								height={3}
 								width={32}
-								backgroundColor={theme.defaultBackground}
-								textColor={theme.default}
-								selectedBackgroundColor={theme.blue}
-								selectedTextColor={theme.brightWhite}
+								{...selectColors}
 								options={[
 									{
 										name: '→ Add a data source',
@@ -181,10 +194,7 @@ export default function DataSourceManager({
 							focused
 							height={listHeight}
 							width={48}
-							backgroundColor={theme.defaultBackground}
-							textColor={theme.default}
-							selectedBackgroundColor={theme.blue}
-							selectedTextColor={theme.brightWhite}
+							{...selectColors}
 							options={items}
 							showDescription={false}
 							onSelect={(_index, option) => {
@@ -245,6 +255,7 @@ export default function DataSourceManager({
 						<input
 							focused
 							style={{width: 40}}
+							{...inputColors}
 							placeholder="e.g., Production DB"
 							value={sourceName}
 							onInput={setSourceName}
@@ -284,6 +295,7 @@ export default function DataSourceManager({
 						<input
 							focused
 							style={{width: 60}}
+							{...inputColors}
 							placeholder="postgres://user:pass@host:5432/database"
 							value={connectionString}
 							onInput={value => {

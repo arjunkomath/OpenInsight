@@ -1,9 +1,9 @@
 # OpenInsight
 
-> Query your database with natural language. Claude-like chat interface for business intelligence.
+> Open Business Insights Agent
 
-> [!WARNING]  
-> **Lot of the code was written by AI (Claude)**, this is an experiment.
+> [!WARNING]
+> **Lot of the code was written by AI**, this is an experiment.
 
 ## Quick Start
 
