@@ -7,16 +7,22 @@
 
 ## Quick Start
 
-OpenInsight runs on [Bun](https://bun.sh/) (>=1.3). Install Bun first if you don't have it.
+Install with Homebrew:
+
+```bash
+brew install arjunkomath/tap/openinsight
+```
+
+Or install with [Bun](https://bun.sh/) (>=1.3):
 
 ```bash
 # 1. Install
 bun add -g openinsight
 
-# 2. Set your OpenRouter API key
+# Set your OpenRouter API key
 export OPENROUTER_KEY=sk-...
 
-# 3. Run
+# Run
 openinsight
 ```
 
