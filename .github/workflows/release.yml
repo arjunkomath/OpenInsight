@@ -24,10 +24,6 @@ jobs:
             target: linux-arm64
             binary: openinsight
             archive: openinsight-linux-arm64.tar.gz
-          - os: macos-13
-            target: darwin-x64
-            binary: openinsight
-            archive: openinsight-darwin-x64.tar.gz
           - os: macos-14
             target: darwin-arm64
             binary: openinsight

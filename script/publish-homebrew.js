@@ -11,7 +11,7 @@ const distDir = path.resolve(process.env.DIST_DIR ?? 'dist');
 const tag = process.env.GITHUB_REF_NAME;
 const formulaPath = 'Formula/openinsight.rb';
 
-const targets = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'];
+const targets = ['darwin-arm64', 'linux-arm64', 'linux-x64'];
 
 if (!tag) {
 	throw new Error('GITHUB_REF_NAME is required, for example v0.9.0');
@@ -70,14 +70,6 @@ class Openinsight < Formula
       end
     end
 
-    if Hardware::CPU.intel?
-      url "${releaseUrl('darwin-x64')}"
-      sha256 "${sums['darwin-x64']}"
-
-      def install
-        bin.install "openinsight"
-      end
-    end
   end
 
   on_linux do
