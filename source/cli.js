@@ -17,6 +17,7 @@ meow(
 	`,
 	{
 		importMeta: import.meta,
+		autoVersion: false,
 	},
 );
 

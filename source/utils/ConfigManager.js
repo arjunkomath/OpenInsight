@@ -1,39 +1,52 @@
 import {readFileSync, writeFileSync, existsSync, mkdirSync} from 'fs';
 import {join} from 'path';
 
-const CONFIG_DIR = join(process.cwd(), '.openinsight');
-const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
+const getConfigDir = () => join(process.cwd(), '.openinsight');
+const getConfigFile = () => join(getConfigDir(), 'config.json');
 
 function ensureConfigDir() {
-	if (!existsSync(CONFIG_DIR)) {
-		mkdirSync(CONFIG_DIR, {recursive: true});
+	const configDir = getConfigDir();
+	if (!existsSync(configDir)) {
+		mkdirSync(configDir, {recursive: true});
 	}
+}
+
+function loadConfig() {
+	if (!existsSync(getConfigFile())) {
+		return {version: '1.0.0', dataSources: [], presets: {}};
+	}
+
+	const content = readFileSync(getConfigFile(), 'utf-8');
+	const config = JSON.parse(content);
+	return {
+		version: config.version || '1.0.0',
+		...config,
+		dataSources: config.dataSources || [],
+		presets: config.presets || {},
+	};
+}
+
+function writeConfig(config) {
+	ensureConfigDir();
+	writeFileSync(getConfigFile(), JSON.stringify(config, null, 2), 'utf-8');
 }
 
 export function loadDataSources() {
 	try {
-		if (existsSync(CONFIG_FILE)) {
-			const content = readFileSync(CONFIG_FILE, 'utf-8');
-			const config = JSON.parse(content);
-			return config.dataSources || [];
-		}
+		return loadConfig().dataSources;
 	} catch {
 		return [];
 	}
-
-	return [];
 }
 
 export function saveDataSources(dataSources) {
 	try {
-		ensureConfigDir();
-		const config = {
-			version: '1.0.0',
+		const config = loadConfig();
+		writeConfig({
+			...config,
 			lastModified: new Date().toISOString(),
 			dataSources,
-		};
-
-		writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+		});
 		return true;
 	} catch {
 		return false;
@@ -56,14 +69,27 @@ export function addDataSource(source) {
 }
 
 export function removeDataSource(id) {
-	const sources = loadDataSources();
-	const filtered = sources.filter(s => s.id !== id);
+	try {
+		const config = loadConfig();
+		const filtered = config.dataSources.filter(source => source.id !== id);
 
-	if (filtered.length === sources.length) {
+		if (filtered.length === config.dataSources.length) {
+			return false;
+		}
+
+		const presets = {...config.presets};
+		delete presets[id];
+
+		writeConfig({
+			...config,
+			dataSources: filtered,
+			presets,
+			lastModified: new Date().toISOString(),
+		});
+		return true;
+	} catch {
 		return false;
 	}
-
-	return saveDataSources(filtered);
 }
 
 export function getDataSource(id) {
@@ -73,28 +99,16 @@ export function getDataSource(id) {
 
 export function loadPresets(sourceId) {
 	try {
-		if (existsSync(CONFIG_FILE)) {
-			const content = readFileSync(CONFIG_FILE, 'utf-8');
-			const config = JSON.parse(content);
-			const presets = config.presets || {};
-			return presets[sourceId] || [];
-		}
+		const presets = loadConfig().presets || {};
+		return presets[sourceId] || [];
 	} catch {
 		return [];
 	}
-	return [];
 }
 
 export function savePreset(sourceId, preset) {
 	try {
-		ensureConfigDir();
-		let config = {version: '1.0.0', dataSources: [], presets: {}};
-
-		if (existsSync(CONFIG_FILE)) {
-			const content = readFileSync(CONFIG_FILE, 'utf-8');
-			config = JSON.parse(content);
-			config.presets = config.presets || {};
-		}
+		const config = loadConfig();
 
 		const sourcePresets = config.presets[sourceId] || [];
 
@@ -112,7 +126,7 @@ export function savePreset(sourceId, preset) {
 		config.presets[sourceId] = sourcePresets;
 		config.lastModified = new Date().toISOString();
 
-		writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+		writeConfig(config);
 		return {success: true};
 	} catch (error) {
 		return {success: false, error: error.message};
@@ -121,11 +135,9 @@ export function savePreset(sourceId, preset) {
 
 export function removePreset(sourceId, presetId) {
 	try {
-		if (!existsSync(CONFIG_FILE)) return false;
+		if (!existsSync(getConfigFile())) return false;
 
-		const content = readFileSync(CONFIG_FILE, 'utf-8');
-		const config = JSON.parse(content);
-
+		const config = loadConfig();
 		if (!config.presets || !config.presets[sourceId]) return false;
 
 		config.presets[sourceId] = config.presets[sourceId].filter(
@@ -133,7 +145,7 @@ export function removePreset(sourceId, presetId) {
 		);
 		config.lastModified = new Date().toISOString();
 
-		writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+		writeConfig(config);
 		return true;
 	} catch {
 		return false;

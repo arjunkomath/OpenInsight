@@ -11,6 +11,7 @@ import {
 	loadPresets,
 	savePreset,
 	removePreset,
+	removeDataSource,
 } from './utils/ConfigManager.js';
 import {
 	generateQuery,
@@ -51,6 +52,23 @@ export default function App({onRequestQuit = () => {}}) {
 		}
 
 		return result;
+	};
+
+	const handleDeleteSource = sourceId => {
+		const removed = removeDataSource(sourceId);
+		if (!removed) return false;
+
+		const nextSources = loadDataSources();
+		setDataSources(nextSources);
+
+		if (selectedSource?.id === sourceId) {
+			setSelectedSource(null);
+			setSchema(null);
+			setSchemaError(null);
+			setAppState('manage-sources');
+		}
+
+		return true;
 	};
 
 	const handleSelectSource = async source => {
@@ -152,6 +170,7 @@ export default function App({onRequestQuit = () => {}}) {
 				schema={schema}
 				schemaError={schemaError}
 				onDeletePreset={presetId => removePreset(selectedSource.id, presetId)}
+				onDeleteSource={handleDeleteSource}
 				onGenerateQuery={handleGenerateQuery}
 				onExecuteQuery={handleExecuteQuery}
 				onLoadPresets={() => loadPresets(selectedSource.id)}

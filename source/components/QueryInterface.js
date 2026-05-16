@@ -10,6 +10,10 @@ import {
 	truncateStatus,
 } from '../utils/transcript.js';
 import {getQueryCtrlCAction} from '../utils/query-quit.js';
+import {
+	getSlashCommandHelp,
+	getSlashCommandSuggestions,
+} from '../utils/slash-commands.js';
 
 const BOLD = TextAttributes.BOLD;
 const DIM = TextAttributes.DIM;
@@ -54,6 +58,7 @@ export default function QueryInterface({
 	onLoadPresets,
 	onSavePreset,
 	onDeletePreset,
+	onDeleteSource,
 	onRequestQuit,
 	hasApiKey,
 	model,
@@ -81,7 +86,9 @@ export default function QueryInterface({
 	const [isCancelling, setIsCancelling] = useState(false);
 	const [scrollTop, setScrollTop] = useState(0);
 	const [autoFollow, setAutoFollow] = useState(true);
+	const [selectedSlashCommandIndex, setSelectedSlashCommandIndex] = useState(0);
 	const [pendingQuery, setPendingQuery] = useState(null);
+	const [pendingSourceDeletion, setPendingSourceDeletion] = useState(null);
 	const [lastExecutedSql, setLastExecutedSql] = useState(null);
 	const [awaitingQuitConfirmation, setAwaitingQuitConfirmation] =
 		useState(false);
@@ -94,9 +101,39 @@ export default function QueryInterface({
 	const activeRequestRef = useRef(null);
 
 	const MAX_MESSAGES = 100;
-	const reservedRows = 9;
+	const inputDisabled =
+		Boolean(pendingQuery) || Boolean(pendingSourceDeletion) || isProcessing;
+	const slashCommandSuggestions = getSlashCommandSuggestions(input).slice(0, 4);
+	const showSlashCommandSuggestions =
+		!inputDisabled && slashCommandSuggestions.length > 0;
+	const suggestionRows = showSlashCommandSuggestions
+		? slashCommandSuggestions.length
+		: 0;
+	const suggestionExtraRows = showSlashCommandSuggestions
+		? suggestionRows + 1
+		: 0;
+	const reservedRows = 9 + suggestionExtraRows;
 	const transcriptHeight = Math.max(terminalHeight - reservedRows, 4);
 	const transcriptWidth = Math.max(terminalWidth - 4, 20);
+	const suggestionWidth = Math.max(terminalWidth - 10, 20);
+	const slashCommandSuggestionRows = slashCommandSuggestions.map(
+		({command, usage, description}, index) => {
+			const descriptionWidth = Math.max(suggestionWidth - usage.length - 3, 0);
+
+			return {
+				command,
+				usage,
+				selected: index === selectedSlashCommandIndex,
+				description:
+					descriptionWidth > 0
+						? truncateStatus(description, descriptionWidth)
+						: '',
+			};
+		},
+	);
+	const selectedSlashCommand =
+		slashCommandSuggestions[selectedSlashCommandIndex] ??
+		slashCommandSuggestions[0];
 
 	const addMessage = message => {
 		setMessages(previous => [...previous.slice(-MAX_MESSAGES + 1), message]);
@@ -109,6 +146,20 @@ export default function QueryInterface({
 	const clearInput = () => {
 		setInput('');
 		setInputKey(k => k + 1);
+	};
+
+	const completeSelectedSlashCommand = () => {
+		if (!selectedSlashCommand) return false;
+
+		const nextInput =
+			selectedSlashCommand.usage === selectedSlashCommand.command
+				? selectedSlashCommand.command
+				: `${selectedSlashCommand.command} `;
+
+		setInput(nextInput);
+		setInputKey(k => k + 1);
+		resetQuitConfirmation();
+		return true;
 	};
 
 	const pinToBottom = () => {
@@ -198,6 +249,34 @@ export default function QueryInterface({
 		setPendingQuery(null);
 	};
 
+	const confirmSourceDeletion = () => {
+		if (!pendingSourceDeletion) return;
+
+		const deletedSource = pendingSourceDeletion;
+		setPendingSourceDeletion(null);
+		clearInput();
+		pinToBottom();
+		resetQuitConfirmation();
+
+		const result = onDeleteSource(deletedSource.id);
+		addMessage(
+			result
+				? {
+						role: 'system',
+						content: `Source "${deletedSource.name}" deleted`,
+					}
+				: {role: 'error', content: 'Failed to delete source'},
+		);
+	};
+
+	const cancelSourceDeletion = () => {
+		clearInput();
+		pinToBottom();
+		resetQuitConfirmation();
+		addMessage({role: 'system', content: 'Source deletion cancelled'});
+		setPendingSourceDeletion(null);
+	};
+
 	const maxTableRows = Math.max(Math.floor((transcriptHeight - 8) / 2), 3);
 
 	const prepareTableData = data => {
@@ -273,6 +352,17 @@ export default function QueryInterface({
 		});
 	}, [autoFollow, maxScrollTop, transcriptHeight, transcriptLines.length]);
 
+	useEffect(() => {
+		setSelectedSlashCommandIndex(0);
+	}, [input]);
+
+	useEffect(() => {
+		setSelectedSlashCommandIndex(current => {
+			if (!showSlashCommandSuggestions) return 0;
+			return Math.min(current, slashCommandSuggestions.length - 1);
+		});
+	}, [showSlashCommandSuggestions, slashCommandSuggestions.length]);
+
 	const updateScrollTop = nextScrollTop => {
 		const clamped = Math.max(0, Math.min(nextScrollTop, maxScrollTop));
 		setScrollTop(clamped);
@@ -325,8 +415,42 @@ export default function QueryInterface({
 			return;
 		}
 
+		if (showSlashCommandSuggestions) {
+			if (keyName === 'tab') {
+				if (completeSelectedSlashCommand()) return;
+			}
+
+			if (key.ctrl && keyName === 'n') {
+				setSelectedSlashCommandIndex(
+					current => (current + 1) % slashCommandSuggestions.length,
+				);
+				return;
+			}
+
+			if (key.ctrl && keyName === 'p') {
+				setSelectedSlashCommandIndex(
+					current =>
+						(current - 1 + slashCommandSuggestions.length) %
+						slashCommandSuggestions.length,
+				);
+				return;
+			}
+		}
+
 		if (awaitingQuitConfirmation) {
 			resetQuitConfirmation();
+		}
+
+		if (pendingSourceDeletion && !isProcessing) {
+			if (keyName === 'y') {
+				confirmSourceDeletion();
+				return;
+			}
+
+			if (keyName === 'n' || keyName === 'escape') {
+				cancelSourceDeletion();
+				return;
+			}
 		}
 
 		if (pendingQuery && !isProcessing) {
@@ -376,14 +500,14 @@ export default function QueryInterface({
 
 		if (!query.trim() || isProcessing) return;
 
-		if (pendingQuery) return;
+		if (pendingQuery || pendingSourceDeletion) return;
 
 		addMessage({role: 'user', content: query});
 		clearInput();
 		pinToBottom();
 
-		if (query.startsWith('/')) {
-			handleCommand(query);
+		if (query.trimStart().startsWith('/')) {
+			handleCommand(query.trim());
 			return;
 		}
 
@@ -437,8 +561,7 @@ export default function QueryInterface({
 			case command === '/help': {
 				addMessage({
 					role: 'system',
-					content:
-						'Commands:\n/help - Show this help\n/new - Start new thread\n/save <name> - Save last query as preset\n/presets - List saved presets\n/presets <n> - Run preset n\n/delete-preset <n> - Delete preset n\n/add - Add new data source\n/sources - List all sources\n/sources <n> - Switch to source n\n/schema - Show cached schema\n/clear - Clear messages',
+					content: getSlashCommandHelp(),
 				});
 				return;
 			}
@@ -533,6 +656,32 @@ export default function QueryInterface({
 				return;
 			}
 
+			case command === '/delete-source' ||
+				command.startsWith('/delete-source '): {
+				const parts = command.split(/\s+/);
+				if (parts.length !== 2) {
+					addMessage({role: 'error', content: 'Usage: /delete-source <n>'});
+					return;
+				}
+
+				const index = Number.parseInt(parts[1], 10) - 1;
+				if (index >= 0 && index < sources.length) {
+					const sourceToDelete = sources[index];
+					setPendingSourceDeletion(sourceToDelete);
+					addMessage({
+						role: 'system',
+						content: `Delete source "${sourceToDelete.name}" (${sourceToDelete.type})? Press Y to confirm, N to cancel`,
+					});
+					return;
+				}
+
+				addMessage({
+					role: 'error',
+					content: `Invalid source number. Use 1-${sources.length}`,
+				});
+				return;
+			}
+
 			case command.startsWith('/sources'): {
 				const parts = command.split(' ');
 				if (parts.length === 1) {
@@ -620,34 +769,38 @@ export default function QueryInterface({
 				'Press Ctrl+C again to quit • Any other key to stay',
 				statusWidth,
 			)
-		: truncateStatus(
-				[
-					`Lines ${visibleRangeStart}-${visibleRangeEnd} of ${transcriptLines.length}`,
-					hiddenAbove > 0 ? `${hiddenAbove} above` : 'top',
-					hiddenBelow > 0 ? `${hiddenBelow} below` : 'following',
-					'↑↓ scroll',
-					'PgUp/PgDn page',
-					'Home/End top/bottom',
-				].join(' • '),
-				statusWidth,
-			);
+		: showSlashCommandSuggestions
+			? truncateStatus('Tab complete • Ctrl+N/Ctrl+P select', statusWidth)
+			: truncateStatus(
+					[
+						`Lines ${visibleRangeStart}-${visibleRangeEnd} of ${transcriptLines.length}`,
+						hiddenAbove > 0 ? `${hiddenAbove} above` : 'top',
+						hiddenBelow > 0 ? `${hiddenBelow} below` : 'following',
+						'↑↓ scroll',
+						'PgUp/PgDn page',
+						'Home/End top/bottom',
+					].join(' • '),
+					statusWidth,
+				);
 	const promptBorderColor = pendingQuery
 		? theme.yellow
-		: awaitingQuitConfirmation
+		: pendingSourceDeletion || awaitingQuitConfirmation
 			? theme.red
 			: theme.gray;
 	const promptColor = pendingQuery
 		? theme.yellow
-		: awaitingQuitConfirmation
+		: pendingSourceDeletion || awaitingQuitConfirmation
 			? theme.red
 			: theme.cyan;
 	const promptPlaceholder = pendingQuery
 		? 'Press Y to run, N to cancel'
-		: awaitingQuitConfirmation
-			? 'Press Ctrl+C again to quit'
-			: isProcessing
-				? 'Processing... Press Esc to cancel'
-				: 'Ask a question about your data...';
+		: pendingSourceDeletion
+			? 'Press Y to delete, N to cancel'
+			: awaitingQuitConfirmation
+				? 'Press Ctrl+C again to quit'
+				: isProcessing
+					? 'Processing... Press Esc to cancel'
+					: 'Ask a question about your data...';
 	const processingText = isCancelling
 		? activeOperation === 'execution'
 			? 'Cancelling query execution...'
@@ -655,7 +808,6 @@ export default function QueryInterface({
 		: activeOperation === 'execution'
 			? 'Running query... Press Esc to cancel'
 			: 'Thinking... Press Esc to cancel';
-	const inputDisabled = Boolean(pendingQuery) || isProcessing;
 	const inputColors = {
 		backgroundColor: theme.transparent,
 		focusedBackgroundColor: theme.transparent,
@@ -716,25 +868,48 @@ export default function QueryInterface({
 					marginX: 2,
 					marginTop: 1,
 					flexShrink: 0,
-					flexDirection: 'row',
-					height: 3,
+					flexDirection: 'column',
+					height: 3 + suggestionExtraRows,
 				}}
 			>
-				<text fg={promptColor}>❯ </text>
-				<input
-					key={inputKey}
-					focused={!inputDisabled}
-					style={{flexGrow: 1}}
-					{...inputColors}
-					placeholder={promptPlaceholder}
-					value={input}
-					onInput={value => {
-						if (pendingQuery) return;
-						resetQuitConfirmation();
-						setInput(value);
-					}}
-					onSubmit={handleSubmit}
-				/>
+				<box style={{flexDirection: 'row', height: 1}}>
+					<text fg={promptColor}>❯ </text>
+					<input
+						key={inputKey}
+						focused={!inputDisabled}
+						style={{flexGrow: 1}}
+						{...inputColors}
+						placeholder={promptPlaceholder}
+						value={input}
+						onInput={value => {
+							if (pendingQuery || pendingSourceDeletion) return;
+							resetQuitConfirmation();
+							setInput(value);
+						}}
+						onSubmit={handleSubmit}
+					/>
+				</box>
+				{showSlashCommandSuggestions && (
+					<box
+						style={{
+							flexDirection: 'column',
+							marginTop: 1,
+							height: suggestionRows,
+						}}
+					>
+						{slashCommandSuggestionRows.map(
+							({command, usage, description, selected}) => (
+								<text key={command}>
+									<span fg={selected ? theme.yellow : theme.gray}>
+										{selected ? '› ' : '  '}
+									</span>
+									<span fg={selected ? theme.yellow : theme.cyan}>{usage}</span>
+									{description && <span fg={theme.gray}> - {description}</span>}
+								</text>
+							),
+						)}
+					</box>
+				)}
 			</box>
 
 			<box

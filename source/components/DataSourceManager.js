@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {useTerminalDimensions} from '@opentui/react';
+import {useKeyboard, useTerminalDimensions} from '@opentui/react';
 import {TextAttributes} from '@opentui/core';
 import Spinner from './Spinner.js';
 import {theme} from '../theme.js';
@@ -7,6 +7,7 @@ import {
 	testConnection,
 	validateConnectionString,
 } from '../utils/DbConnector.js';
+import {APP_VERSION} from '../utils/version.js';
 
 const BOLD = TextAttributes.BOLD;
 const DIM = TextAttributes.DIM;
@@ -17,11 +18,14 @@ export default function DataSourceManager({
 	onAddSource,
 }) {
 	const [mode, setMode] = useState('menu');
+	const [activeAddField, setActiveAddField] = useState('name');
 	const [sourceName, setSourceName] = useState('');
 	const [connectionString, setConnectionString] = useState('');
 	const [isValidating, setIsValidating] = useState(false);
 	const [error, setError] = useState(null);
-	const {height: terminalHeight} = useTerminalDimensions();
+	const {width: terminalWidth, height: terminalHeight} =
+		useTerminalDimensions();
+	const addInputWidth = Math.max(terminalWidth - 8, 40);
 	const selectColors = {
 		backgroundColor: theme.transparent,
 		focusedBackgroundColor: theme.transparent,
@@ -39,13 +43,27 @@ export default function DataSourceManager({
 		cursorColor: theme.cyan,
 	};
 
+	const startAddingSource = () => {
+		setMode('add');
+		setActiveAddField('name');
+		setSourceName('');
+		setConnectionString('');
+		setError(null);
+	};
+
 	const handleAddSource = async value => {
 		const connection = value ?? connectionString;
-		if (!connection.trim() || isValidating) return;
+		const trimmedConnection = connection.trim();
+		if (!trimmedConnection || isValidating) return;
+		if (!sourceName.trim()) {
+			setError('Data source name is required');
+			setActiveAddField('name');
+			return;
+		}
 
 		setError(null);
 
-		const validation = validateConnectionString(connection);
+		const validation = validateConnectionString(trimmedConnection);
 		if (!validation.isValid) {
 			setError(validation.error);
 			return;
@@ -53,7 +71,7 @@ export default function DataSourceManager({
 
 		setIsValidating(true);
 
-		const result = await testConnection(connection);
+		const result = await testConnection(trimmedConnection);
 
 		setIsValidating(false);
 
@@ -64,8 +82,8 @@ export default function DataSourceManager({
 
 		const newSource = {
 			id: crypto.randomUUID(),
-			name: sourceName,
-			connectionString: connection,
+			name: sourceName.trim(),
+			connectionString: trimmedConnection,
 			type: validation.protocol,
 		};
 
@@ -78,7 +96,27 @@ export default function DataSourceManager({
 		setSourceName('');
 		setConnectionString('');
 		setMode('menu');
+		setActiveAddField('name');
 	};
+
+	useKeyboard(key => {
+		if (mode !== 'add' || isValidating) return;
+
+		const keyName =
+			typeof key.name === 'string' ? key.name.toLowerCase() : key.name;
+
+		if (keyName === 'tab') {
+			setActiveAddField(current =>
+				key.shift
+					? current === 'connection'
+						? 'name'
+						: 'connection'
+					: current === 'name'
+						? 'connection'
+						: 'name',
+			);
+		}
+	});
 
 	if (mode === 'menu') {
 		const hasSources = sources.length > 0;
@@ -93,6 +131,7 @@ export default function DataSourceManager({
 						<text fg={theme.magenta} attributes={BOLD}>
 							INSIGHT
 						</text>
+						<text fg={theme.gray}> v{APP_VERSION}</text>
 					</box>
 
 					<box
@@ -123,12 +162,7 @@ export default function DataSourceManager({
 									},
 								]}
 								showDescription={false}
-								onSelect={() => {
-									setMode('add-name');
-									setSourceName('');
-									setConnectionString('');
-									setError(null);
-								}}
+								onSelect={startAddingSource}
 							/>
 						</box>
 					</box>
@@ -183,6 +217,7 @@ export default function DataSourceManager({
 					<text fg={theme.magenta} attributes={BOLD}>
 						INSIGHT
 					</text>
+					<text fg={theme.gray}> v{APP_VERSION}</text>
 				</box>
 
 				<box style={{flexDirection: 'column', flexGrow: 1, paddingX: 2}}>
@@ -200,10 +235,7 @@ export default function DataSourceManager({
 							onSelect={(_index, option) => {
 								if (!option) return;
 								if (option.value === 'add') {
-									setMode('add-name');
-									setSourceName('');
-									setConnectionString('');
-									setError(null);
+									startAddingSource();
 								} else {
 									onSelectSource(option.value);
 								}
@@ -239,7 +271,7 @@ export default function DataSourceManager({
 		);
 	}
 
-	if (mode === 'add-name') {
+	if (mode === 'add') {
 		return (
 			<box style={{flexDirection: 'column', height: terminalHeight}}>
 				<box style={{paddingX: 2, paddingY: 1}}>
@@ -248,53 +280,48 @@ export default function DataSourceManager({
 					</text>
 				</box>
 
-				<box style={{flexDirection: 'column', flexGrow: 1, paddingX: 2}}>
-					<text fg={theme.yellow}>Enter a name for this data source:</text>
-					<box style={{marginTop: 1, flexDirection: 'row', height: 1}}>
+				<box
+					style={{
+						flexDirection: 'column',
+						flexGrow: 1,
+						paddingX: 2,
+						gap: 1,
+					}}
+				>
+					<text fg={theme.yellow}>Name</text>
+					<box style={{flexDirection: 'row', height: 1}}>
 						<text fg={theme.cyan}>❯ </text>
 						<input
-							focused
-							style={{width: 40}}
+							key="data-source-name"
+							focused={activeAddField === 'name'}
+							style={{width: Math.min(addInputWidth, 64)}}
 							{...inputColors}
 							placeholder="e.g., Production DB"
 							value={sourceName}
-							onInput={setSourceName}
+							onInput={value => {
+								setSourceName(value);
+								setError(null);
+							}}
 							onSubmit={value => {
-								if (value.trim()) {
-									setSourceName(value);
-									setMode('add-connection');
+								const name = value.trim();
+								if (name) {
+									setSourceName(name);
+									setError(null);
+									setActiveAddField('connection');
+								} else {
+									setError('Data source name is required');
 								}
 							}}
 						/>
 					</box>
-				</box>
 
-				<box style={{paddingX: 2, paddingBottom: 1}}>
-					<text fg={theme.default} attributes={DIM}>
-						Press Enter to continue • Ctrl+C to cancel
-					</text>
-				</box>
-			</box>
-		);
-	}
-
-	if (mode === 'add-connection') {
-		return (
-			<box style={{flexDirection: 'column', height: terminalHeight}}>
-				<box style={{paddingX: 2, paddingY: 1, flexDirection: 'row'}}>
-					<text fg={theme.cyan} attributes={BOLD}>
-						Add Data Source
-					</text>
-					<text fg={theme.gray}> - {sourceName}</text>
-				</box>
-
-				<box style={{flexDirection: 'column', flexGrow: 1, paddingX: 2}}>
-					<text fg={theme.yellow}>Enter the connection string:</text>
-					<box style={{marginTop: 1, flexDirection: 'row', height: 1}}>
+					<text fg={theme.yellow}>Connection string</text>
+					<box style={{flexDirection: 'row', height: 1}}>
 						<text fg={theme.cyan}>❯ </text>
 						<input
-							focused
-							style={{width: 60}}
+							key="data-source-connection"
+							focused={activeAddField === 'connection'}
+							style={{width: addInputWidth}}
 							{...inputColors}
 							placeholder="postgres://user:pass@host:5432/database"
 							value={connectionString}
@@ -329,7 +356,7 @@ export default function DataSourceManager({
 
 				<box style={{paddingX: 2, paddingBottom: 1}}>
 					<text fg={theme.default} attributes={DIM}>
-						Press Enter to validate and add • Ctrl+C to cancel
+						Tab to switch fields • Enter to continue/add • Ctrl+C to cancel
 					</text>
 				</box>
 			</box>

@@ -9,8 +9,28 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run tests
+        run: bun run test
+
   build:
     name: Build ${{ matrix.target }}
+    needs: test
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -42,8 +62,23 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run tests
-        run: bun run test
+      - name: Set app version from tag
+        shell: bash
+        run: |
+          bun --eval '
+            const {writeFileSync} = require("node:fs");
+            const tag = process.env.GITHUB_REF_NAME;
+            if (!tag?.startsWith("v") || tag.length === 1) {
+              throw new Error(`Expected a version tag like v0.9.0, got ${tag}`);
+            }
+
+            const version = tag.slice(1);
+            writeFileSync(
+              "source/utils/version.js",
+              `export const APP_VERSION = ${JSON.stringify(version)};\n`,
+            );
+            console.log(`APP_VERSION=${version}`);
+          '
 
       - name: Compile binary
         shell: bash
