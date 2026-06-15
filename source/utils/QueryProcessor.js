@@ -150,6 +150,14 @@ export async function executeQuery(
 		if (onLog) onLog(message);
 	};
 
+	if (!isReadOnlyQuery(sqlQuery)) {
+		return {
+			error: 'Only SELECT queries are allowed',
+			sql: sqlQuery,
+			data: null,
+		};
+	}
+
 	const maxRetries = 3;
 	let currentSql = sqlQuery;
 	let lastError = null;

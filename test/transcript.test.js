@@ -40,3 +40,30 @@ test('renderTranscriptLines shows empty query results explicitly', () => {
 		),
 	).toBe(true);
 });
+
+test('renderTranscriptLines wraps table cells without ellipsizing data', () => {
+	const lines = renderTranscriptLines(
+		[
+			{
+				role: 'assistant',
+				content: 'select bio from users',
+				data: [
+					{
+						name: 'Ada',
+						bio: 'abcdefghijklmnopqrstuvwxyz',
+					},
+				],
+				resultCount: 1,
+				moreRows: 0,
+			},
+		],
+		{width: 28},
+	);
+	const renderedText = lines
+		.flatMap(line => line.segments.map(segment => segment.text))
+		.join('\n');
+
+	expect(renderedText).not.toContain('…');
+	expect(renderedText).toContain('abcdefghijkl');
+	expect(renderedText).toContain('uvwxyz');
+});

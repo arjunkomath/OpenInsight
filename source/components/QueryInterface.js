@@ -293,9 +293,9 @@ export default function QueryInterface({
 				if (value === null || value === undefined) {
 					newRow[col] = '';
 				} else if (typeof value === 'object') {
-					newRow[col] = JSON.stringify(value).slice(0, 20);
+					newRow[col] = JSON.stringify(value);
 				} else {
-					newRow[col] = String(value).slice(0, 25);
+					newRow[col] = String(value);
 				}
 			}
 

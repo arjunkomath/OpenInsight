@@ -35,7 +35,9 @@
 	},
 	"scripts": {
 		"start": "bun source/cli.js",
+		"start:web": "bun source/cli.js --web",
 		"dev": "bun --watch source/cli.js",
+		"dev:web": "bun --watch source/cli.js --web",
 		"format": "prettier --write .",
 		"test": "prettier --check . && bun test"
 	},

@@ -96,47 +96,81 @@ const renderTableLines = (data, maxWidth) => {
 		return [];
 	}
 
-	const colWidths = {};
-	for (const column of columns) {
-		colWidths[column] = Math.min(column.length, 18);
-		for (const row of data) {
-			const value = String(row[column] ?? '');
-			colWidths[column] = Math.min(
-				Math.max(colWidths[column], value.length),
-				18,
-			);
-		}
-	}
-
-	const buildRow = values =>
-		truncate(
-			values
-				.map((value, index) => pad(value, colWidths[columns[index]]))
-				.join('  '),
-			maxWidth,
+	const gap = '  ';
+	const availableWidth = Math.max(
+		maxWidth - gap.length * (columns.length - 1),
+		1,
+	);
+	const columnWidths = columns.map(column => {
+		let width = Math.max(
+			...wrapText(column, maxWidth).map(line => line.length),
 		);
 
+		for (const row of data) {
+			const value = String(row[column] ?? '');
+			const longestLine = Math.max(
+				...wrapText(value, maxWidth).map(line => line.length),
+			);
+			width = Math.max(width, longestLine);
+		}
+
+		return Math.max(width, 1);
+	});
+
+	while (columnWidths.reduce((sum, width) => sum + width, 0) > availableWidth) {
+		let widestIndex = 0;
+		for (const [index, width] of columnWidths.entries()) {
+			if (width > columnWidths[widestIndex]) {
+				widestIndex = index;
+			}
+		}
+
+		if (columnWidths[widestIndex] <= 1) {
+			break;
+		}
+
+		columnWidths[widestIndex] -= 1;
+	}
+
+	const createTableRowLines = (lineKey, values, style = {}) => {
+		const wrappedCells = values.map((value, index) =>
+			wrapText(value, columnWidths[index]),
+		);
+		const rowHeight = Math.max(...wrappedCells.map(lines => lines.length));
+
+		return Array.from({length: rowHeight}, (_, rowLineIndex) =>
+			createLine(
+				`${lineKey}-${rowLineIndex}`,
+				createSegment(
+					wrappedCells
+						.map((cellLines, columnIndex) =>
+							pad(cellLines[rowLineIndex] ?? '', columnWidths[columnIndex]),
+						)
+						.join(gap),
+					style,
+				),
+			),
+		);
+	};
+
 	return [
-		createLine(
-			`table-${columns.join('-')}-header`,
-			createSegment(buildRow(columns), {color: 'cyan', bold: true}),
-		),
+		...createTableRowLines(`table-${columns.join('-')}-header`, columns, {
+			color: 'cyan',
+			bold: true,
+		}),
 		createLine(
 			`table-${columns.join('-')}-separator`,
 			createSegment(
-				truncate(
-					columns.map(column => '─'.repeat(colWidths[column])).join('  '),
-					maxWidth,
-				),
+				columns
+					.map((column, index) => '─'.repeat(columnWidths[index]))
+					.join(gap),
 				{dimColor: true},
 			),
 		),
-		...data.map((row, rowIndex) =>
-			createLine(
+		...data.flatMap((row, rowIndex) =>
+			createTableRowLines(
 				`table-row-${rowIndex}`,
-				createSegment(
-					buildRow(columns.map(column => String(row[column] ?? ''))),
-				),
+				columns.map(column => String(row[column] ?? '')),
 			),
 		),
 	];

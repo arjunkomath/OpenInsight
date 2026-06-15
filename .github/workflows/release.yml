@@ -96,6 +96,26 @@ jobs:
         shell: bash
         run: ./dist/package/${{ matrix.binary }} --help
 
+      - name: Smoke test web mode
+        shell: bash
+        run: |
+          ./dist/package/${{ matrix.binary }} --web --port 5679 > web-smoke.log 2>&1 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+
+          for attempt in {1..50}; do
+            if curl -fsS http://127.0.0.1:5679/api/status >/tmp/openinsight-status.json; then
+              break
+            fi
+            sleep 0.1
+          done
+
+          curl -fsS http://127.0.0.1:5679/ >/tmp/openinsight-index.html
+          curl -fsS http://127.0.0.1:5679/app.js >/tmp/openinsight-app.js
+          curl -fsS http://127.0.0.1:5679/styles.css >/tmp/openinsight-styles.css
+          grep -q "OpenInsight" /tmp/openinsight-app.js
+          grep -q "prefers-color-scheme" /tmp/openinsight-styles.css
+
       - name: Package binary
         shell: bash
         run: |
