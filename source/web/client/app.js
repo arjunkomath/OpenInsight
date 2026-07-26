@@ -45,17 +45,7 @@ const selectedSource = () =>
 
 const loadSources = async () => {
 	const {sources} = await api('/api/sources');
-	const selectedSourceId = sources.some(
-		source => source.id === state.selectedSourceId,
-	)
-		? state.selectedSourceId
-		: null;
-
-	setState({
-		sources,
-		selectedSourceId,
-	});
-	if (selectedSourceId) await selectSource(selectedSourceId);
+	setState({sources});
 };
 
 const selectSource = async sourceId => {

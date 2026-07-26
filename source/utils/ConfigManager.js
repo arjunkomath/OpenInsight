@@ -4,13 +4,6 @@ import {join} from 'path';
 const getConfigDir = () => join(process.cwd(), '.openinsight');
 const getConfigFile = () => join(getConfigDir(), 'config.json');
 
-function ensureConfigDir() {
-	const configDir = getConfigDir();
-	if (!existsSync(configDir)) {
-		mkdirSync(configDir, {recursive: true});
-	}
-}
-
 function loadConfig() {
 	if (!existsSync(getConfigFile())) {
 		return {version: '1.0.0', dataSources: [], presets: {}};
@@ -27,7 +20,7 @@ function loadConfig() {
 }
 
 function writeConfig(config) {
-	ensureConfigDir();
+	mkdirSync(getConfigDir(), {recursive: true});
 	writeFileSync(getConfigFile(), JSON.stringify(config, null, 2), 'utf-8');
 }
 

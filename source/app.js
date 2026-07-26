@@ -1,5 +1,5 @@
 import process from 'node:process';
-import React, {useState, useEffect} from 'react';
+import React, {useState} from 'react';
 import {useKeyboard} from '@opentui/react';
 import DataSourceManager from './components/DataSourceManager.js';
 import QueryInterface from './components/QueryInterface.js';
@@ -24,17 +24,10 @@ const {OPENROUTER_KEY, OPENROUTER_MODEL = 'google/gemini-2.5-flash'} =
 
 export default function App({onRequestQuit = () => {}}) {
 	const [appState, setAppState] = useState('manage-sources');
-	const [dataSources, setDataSources] = useState([]);
+	const [dataSources, setDataSources] = useState(loadDataSources);
 	const [selectedSource, setSelectedSource] = useState(null);
 	const [schema, setSchema] = useState(null);
-	const [loading, setLoading] = useState(true);
 	const [schemaError, setSchemaError] = useState(null);
-
-	useEffect(() => {
-		const sources = loadDataSources();
-		setDataSources(sources);
-		setLoading(false);
-	}, []);
 
 	useKeyboard(key => {
 		if (appState === 'query') return;
@@ -126,14 +119,6 @@ export default function App({onRequestQuit = () => {}}) {
 			abortSignal,
 		);
 	};
-
-	if (loading && dataSources.length === 0) {
-		return (
-			<box style={{paddingX: 2, paddingY: 1}}>
-				<text>Loading...</text>
-			</box>
-		);
-	}
 
 	if (appState === 'manage-sources') {
 		return (

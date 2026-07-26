@@ -120,93 +120,29 @@ export default function DataSourceManager({
 
 	if (mode === 'menu') {
 		const hasSources = sources.length > 0;
-
-		if (!hasSources) {
-			return (
-				<box style={{flexDirection: 'column', height: terminalHeight}}>
-					<box style={{paddingX: 2, paddingY: 1, flexDirection: 'row'}}>
-						<text fg={theme.cyan} attributes={BOLD}>
-							OPEN
-						</text>
-						<text fg={theme.magenta} attributes={BOLD}>
-							INSIGHT
-						</text>
-						<text fg={theme.gray}> v{APP_VERSION}</text>
-					</box>
-
-					<box
-						style={{
-							flexDirection: 'column',
-							flexGrow: 1,
-							paddingX: 2,
-							gap: 1,
-						}}
-					>
-						<box style={{flexDirection: 'column'}}>
-							<text fg={theme.yellow}>No data sources configured.</text>
-							<text fg={theme.default}>
-								Add a database connection to get started.
-							</text>
-						</box>
-						<box>
-							<select
-								focused
-								height={3}
-								width={32}
-								{...selectColors}
-								options={[
-									{
-										name: '→ Add a data source',
-										description: '',
-										value: 'add',
-									},
-								]}
-								showDescription={false}
-								onSelect={startAddingSource}
-							/>
-						</box>
-					</box>
-
-					<box
-						style={{
-							paddingX: 2,
-							paddingBottom: 1,
-							flexDirection: 'column',
-							gap: 1,
-						}}
-					>
-						<box
-							style={{
-								borderStyle: 'rounded',
-								borderColor: theme.yellow,
-								paddingX: 1,
-							}}
-						>
-							<text fg={theme.yellow}>
-								⚠ AI can make mistakes. Verify queries before running.
-							</text>
-						</box>
-						<text fg={theme.default} attributes={DIM}>
-							Press Ctrl+C to exit
-						</text>
-					</box>
-				</box>
-			);
-		}
-
-		const items = sources.map(source => ({
-			name: `  ${source.name} (${source.type})`,
-			description: '',
-			value: source,
-		}));
-
-		items.push({
-			name: '+ Add new data source',
-			description: '',
-			value: 'add',
-		});
-
-		const listHeight = Math.max(Math.min(items.length + 1, 12), 4);
+		const items = hasSources
+			? [
+					...sources.map(source => ({
+						name: `  ${source.name} (${source.type})`,
+						description: '',
+						value: source,
+					})),
+					{
+						name: '+ Add new data source',
+						description: '',
+						value: 'add',
+					},
+				]
+			: [
+					{
+						name: '→ Add a data source',
+						description: '',
+						value: 'add',
+					},
+				];
+		const listHeight = hasSources
+			? Math.max(Math.min(items.length + 1, 12), 4)
+			: 3;
 
 		return (
 			<box style={{flexDirection: 'column', height: terminalHeight}}>
@@ -220,28 +156,59 @@ export default function DataSourceManager({
 					<text fg={theme.gray}> v{APP_VERSION}</text>
 				</box>
 
-				<box style={{flexDirection: 'column', flexGrow: 1, paddingX: 2}}>
-					<text fg={theme.yellow} attributes={BOLD}>
-						Select a data source:
-					</text>
-					<box style={{marginTop: 1, flexDirection: 'column'}}>
-						<select
-							focused
-							height={listHeight}
-							width={48}
-							{...selectColors}
-							options={items}
-							showDescription={false}
-							onSelect={(_index, option) => {
-								if (!option) return;
-								if (option.value === 'add') {
-									startAddingSource();
-								} else {
-									onSelectSource(option.value);
-								}
-							}}
-						/>
-					</box>
+				<box
+					style={{
+						flexDirection: 'column',
+						flexGrow: 1,
+						paddingX: 2,
+						gap: hasSources ? 0 : 1,
+					}}
+				>
+					{hasSources ? (
+						<>
+							<text fg={theme.yellow} attributes={BOLD}>
+								Select a data source:
+							</text>
+							<box style={{marginTop: 1, flexDirection: 'column'}}>
+								<select
+									focused
+									height={listHeight}
+									width={48}
+									{...selectColors}
+									options={items}
+									showDescription={false}
+									onSelect={(_index, option) => {
+										if (!option) return;
+										if (option.value === 'add') {
+											startAddingSource();
+										} else {
+											onSelectSource(option.value);
+										}
+									}}
+								/>
+							</box>
+						</>
+					) : (
+						<>
+							<box style={{flexDirection: 'column'}}>
+								<text fg={theme.yellow}>No data sources configured.</text>
+								<text fg={theme.default}>
+									Add a database connection to get started.
+								</text>
+							</box>
+							<box>
+								<select
+									focused
+									height={listHeight}
+									width={32}
+									{...selectColors}
+									options={items}
+									showDescription={false}
+									onSelect={startAddingSource}
+								/>
+							</box>
+						</>
+					)}
 				</box>
 
 				<box

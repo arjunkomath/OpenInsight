@@ -1,56 +1,41 @@
-import pg from 'pg';
-import mysql from 'mysql2/promise';
-import Database from 'better-sqlite3';
-import {createAbortError, throwIfAborted} from './abort.js';
+import {SQL} from 'bun';
+import {createAbortError, isAbortError, throwIfAborted} from './abort.js';
 
-export function parseConnectionString(connectionString) {
-	if (
-		connectionString.startsWith('sqlite://') ||
-		connectionString.startsWith('file://')
-	) {
-		return {
-			isValid: true,
-			protocol: 'sqlite',
-		};
+const CONNECTION_SCHEMES = [
+	{
+		prefixes: ['sqlite://', 'file://'],
+		protocol: 'sqlite',
+	},
+	{
+		prefixes: ['mysql://', 'mysql2://'],
+		protocol: 'mysql',
+		pattern: /^mysql2?:\/\/([^:]+):([^@]+)@([^:/]+)(?::(\d+))?\/(.+)$/i,
+		error: 'Invalid MySQL connection string format',
+	},
+	{
+		prefixes: ['postgres://', 'postgresql://'],
+		protocol: 'postgres',
+		pattern:
+			/^(?:postgres|postgresql):\/\/([^:]+):([^@]+)@([^:/]+)(?::(\d+))?\/(.+)$/i,
+		error: 'Invalid PostgreSQL connection string format',
+	},
+];
+
+export function validateConnectionString(connectionString) {
+	if (!connectionString || typeof connectionString !== 'string') {
+		return {isValid: false, error: 'Connection string is required'};
 	}
 
-	if (
-		connectionString.startsWith('mysql://') ||
-		connectionString.startsWith('mysql2://')
-	) {
-		const urlPattern =
-			/^mysql2?:\/\/([^:]+):([^@]+)@([^:\/]+)(?::(\d+))?\/(.+)$/i;
-		const match = connectionString.match(urlPattern);
-
-		if (!match) {
-			return {isValid: false, error: 'Invalid MySQL connection string format'};
+	for (const scheme of CONNECTION_SCHEMES) {
+		if (!scheme.prefixes.some(prefix => connectionString.startsWith(prefix))) {
+			continue;
 		}
 
-		return {
-			isValid: true,
-			protocol: 'mysql',
-		};
-	}
-
-	if (
-		connectionString.startsWith('postgres://') ||
-		connectionString.startsWith('postgresql://')
-	) {
-		const urlPattern =
-			/^(?:postgres|postgresql):\/\/([^:]+):([^@]+)@([^:\/]+)(?::(\d+))?\/(.+)$/i;
-		const match = connectionString.match(urlPattern);
-
-		if (!match) {
-			return {
-				isValid: false,
-				error: 'Invalid PostgreSQL connection string format',
-			};
+		if (scheme.pattern && !scheme.pattern.test(connectionString)) {
+			return {isValid: false, error: scheme.error};
 		}
 
-		return {
-			isValid: true,
-			protocol: 'postgres',
-		};
+		return {isValid: true, protocol: scheme.protocol};
 	}
 
 	return {
@@ -59,22 +44,86 @@ export function parseConnectionString(connectionString) {
 	};
 }
 
-export function validateConnectionString(connectionString) {
-	if (!connectionString || typeof connectionString !== 'string') {
-		return {isValid: false, error: 'Connection string is required'};
+function translateAbortError(error, abortSignal, message) {
+	if (abortSignal?.aborted || isAbortError(error)) {
+		return createAbortError(message);
 	}
 
-	return parseConnectionString(connectionString);
+	return error;
 }
 
-function getSqlitePath(connectionString) {
-	if (connectionString.startsWith('sqlite://')) {
-		return connectionString.slice(9);
+class SqlConnection {
+	constructor(connectionString, protocol) {
+		this.connectionString = connectionString;
+		this.protocol = protocol;
+		this.client = null;
 	}
-	if (connectionString.startsWith('file://')) {
-		return connectionString.slice(7);
+
+	#getClient() {
+		if (!this.client) {
+			this.client = new SQL(this.connectionString);
+		}
+
+		return this.client;
 	}
-	return connectionString;
+
+	async query(sql, {abortSignal} = {}) {
+		throwIfAborted(abortSignal, 'Query execution cancelled');
+
+		const useEphemeralClient =
+			this.protocol === 'mysql' && Boolean(abortSignal);
+		const client = useEphemeralClient
+			? new SQL(this.connectionString)
+			: this.#getClient();
+
+		const query = client.unsafe(sql).execute();
+
+		const onAbort = () => {
+			try {
+				query.cancel();
+			} catch {
+				/* best-effort cancel */
+			}
+
+			if (useEphemeralClient) {
+				try {
+					client.close({timeout: 0});
+				} catch {
+					/* best-effort force-close */
+				}
+			}
+		};
+
+		abortSignal?.addEventListener('abort', onAbort, {once: true});
+
+		try {
+			const rows = await query;
+			throwIfAborted(abortSignal, 'Query execution cancelled');
+			return [...rows];
+		} catch (error) {
+			throw translateAbortError(
+				error,
+				abortSignal,
+				'Query execution cancelled',
+			);
+		} finally {
+			abortSignal?.removeEventListener('abort', onAbort);
+
+			if (useEphemeralClient) {
+				await client.close().catch(() => {});
+			}
+		}
+	}
+
+	async close() {
+		if (!this.client) {
+			return;
+		}
+
+		const client = this.client;
+		this.client = null;
+		await client.close();
+	}
 }
 
 export async function testConnection(connectionString) {
@@ -83,177 +132,19 @@ export async function testConnection(connectionString) {
 		return {success: false, error: validation.error};
 	}
 
+	let client;
+
 	try {
-		if (validation.protocol === 'postgres') {
-			const client = new pg.Client({connectionString});
-			await client.connect();
-			await client.query('SELECT 1');
-			await client.end();
-		} else if (validation.protocol === 'mysql') {
-			const connection = await mysql.createConnection(connectionString);
-			await connection.query('SELECT 1');
-			await connection.end();
-		} else if (validation.protocol === 'sqlite') {
-			const dbPath = getSqlitePath(connectionString);
-			const db = new Database(dbPath);
-			db.prepare('SELECT 1').get();
-			db.close();
-		}
+		client = new SQL(connectionString);
+		await client.unsafe('SELECT 1').execute();
 		return {success: true};
 	} catch (error) {
 		return {
 			success: false,
 			error: error.message || 'Failed to connect to database',
 		};
-	}
-}
-
-class PostgresConnection {
-	constructor(connectionString) {
-		this.client = new pg.Client({connectionString});
-		this.connected = false;
-	}
-
-	async connect() {
-		if (!this.connected) {
-			await this.client.connect();
-			this.connected = true;
-		}
-	}
-
-	async query(sql, {abortSignal} = {}) {
-		await this.connect();
-		throwIfAborted(abortSignal, 'Query execution cancelled');
-
-		return new Promise((resolve, reject) => {
-			let settled = false;
-
-			const finish = (callback, value) => {
-				if (settled) {
-					return;
-				}
-
-				settled = true;
-				abortSignal?.removeEventListener('abort', onAbort);
-				callback(value);
-			};
-
-			const onAbort = () => {
-				try {
-					if (this.client.activeQuery) {
-						this.client.cancel(this.client, this.client.activeQuery);
-					}
-				} catch {}
-
-				finish(reject, createAbortError('Query execution cancelled'));
-			};
-
-			abortSignal?.addEventListener('abort', onAbort, {once: true});
-			this.client.query(sql, (error, result) => {
-				if (abortSignal?.aborted) {
-					finish(reject, createAbortError('Query execution cancelled'));
-					return;
-				}
-
-				if (error) {
-					finish(reject, error);
-					return;
-				}
-
-				finish(resolve, result.rows);
-			});
-		});
-	}
-
-	async close() {
-		if (this.connected) {
-			await this.client.end();
-			this.connected = false;
-		}
-	}
-}
-
-class MySQLConnection {
-	constructor(connectionString) {
-		this.connectionString = connectionString;
-		this.connection = null;
-	}
-
-	async connect() {
-		if (!this.connection) {
-			this.connection = await mysql.createConnection(this.connectionString);
-		}
-	}
-
-	async query(sql, {abortSignal} = {}) {
-		await this.connect();
-		throwIfAborted(abortSignal, 'Query execution cancelled');
-
-		return new Promise((resolve, reject) => {
-			let settled = false;
-
-			const finish = (callback, value) => {
-				if (settled) {
-					return;
-				}
-
-				settled = true;
-				abortSignal?.removeEventListener('abort', onAbort);
-				callback(value);
-			};
-
-			const onAbort = () => {
-				const {connection} = this;
-				this.connection = null;
-				connection?.destroy();
-				finish(reject, createAbortError('Query execution cancelled'));
-			};
-
-			abortSignal?.addEventListener('abort', onAbort, {once: true});
-			this.connection
-				.query(sql)
-				.then(([rows]) => {
-					if (abortSignal?.aborted) {
-						finish(reject, createAbortError('Query execution cancelled'));
-						return;
-					}
-
-					finish(resolve, rows);
-				})
-				.catch(error => {
-					if (abortSignal?.aborted) {
-						finish(reject, createAbortError('Query execution cancelled'));
-						return;
-					}
-
-					finish(reject, error);
-				});
-		});
-	}
-
-	async close() {
-		if (this.connection) {
-			await this.connection.end();
-			this.connection = null;
-		}
-	}
-}
-
-class SQLiteConnection {
-	constructor(connectionString) {
-		const dbPath = getSqlitePath(connectionString);
-		this.db = new Database(dbPath);
-	}
-
-	async query(sql, {abortSignal} = {}) {
-		throwIfAborted(abortSignal, 'Query execution cancelled');
-		const rows = this.db.prepare(sql).all();
-		throwIfAborted(abortSignal, 'Query execution cancelled');
-		return rows;
-	}
-
-	async close() {
-		this.db.close();
+	} finally {
+		await client?.close().catch(() => {});
 	}
 }
 
@@ -263,13 +154,5 @@ export async function createConnection(connectionString) {
 		throw new Error(validation.error);
 	}
 
-	if (validation.protocol === 'postgres') {
-		return new PostgresConnection(connectionString);
-	} else if (validation.protocol === 'mysql') {
-		return new MySQLConnection(connectionString);
-	} else if (validation.protocol === 'sqlite') {
-		return new SQLiteConnection(connectionString);
-	}
-
-	throw new Error('Unsupported database type');
+	return new SqlConnection(connectionString, validation.protocol);
 }

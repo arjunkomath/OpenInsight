@@ -12,9 +12,7 @@ export function createOpenRouterClient(apiKey, model, onLog) {
 		throw new Error('OpenRouter API key is required');
 	}
 
-	const log = message => {
-		if (onLog) onLog(message);
-	};
+	const log = message => onLog?.(message);
 
 	const openrouter = createOpenRouter({
 		apiKey,
