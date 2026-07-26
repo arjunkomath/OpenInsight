@@ -13,6 +13,7 @@ export const theme = {
 	white: indexed(7),
 	gray: indexed(8),
 	default: RGBA.defaultForeground(),
+	background: RGBA.defaultBackground(),
 	transparent: RGBA.fromValues(0, 0, 0, 0),
 };
 

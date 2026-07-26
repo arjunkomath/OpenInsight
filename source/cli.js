@@ -37,6 +37,8 @@ const {default: App} = await import('./app.js');
 
 const renderer = await createCliRenderer({
 	exitOnCtrlC: false,
+	useMouse: true,
+	enableMouseMovement: true,
 });
 
 let hasExited = false;
