@@ -63,7 +63,7 @@ Database schema: ${JSON.stringify(schema)}`;
 		log(`[AI Response] Model: ${model}`);
 		if (usage) {
 			log(
-				`[AI Response] Tokens: ${usage.promptTokens} prompt, ${usage.completionTokens} completion`,
+				`[AI Response] Tokens: ${usage.inputTokens} prompt, ${usage.outputTokens} completion`,
 			);
 		}
 		log(`[AI Response] Generated SQL: ${object.sql}`);
@@ -120,7 +120,7 @@ IMPORTANT: Always include a LIMIT clause to prevent excessive data retrieval. Pr
 
 		if (usage) {
 			log(
-				`[AI Response] Tokens: ${usage.promptTokens} prompt, ${usage.completionTokens} completion`,
+				`[AI Response] Tokens: ${usage.inputTokens} prompt, ${usage.outputTokens} completion`,
 			);
 		}
 		log(`[AI Response] Fixed SQL: ${object.sql}`);
