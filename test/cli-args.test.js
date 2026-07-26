@@ -25,12 +25,14 @@ test('--help prints usage and exits 0', async () => {
 	expect(code).toBe(0);
 	expect(stdout).toContain('Usage');
 	expect(stdout).toContain('--web');
+	expect(stdout).toContain('--claude');
 	expect(stdout).toContain('--port');
 });
 
 test('parseCliArgs applies defaults', () => {
 	expect(parseCliArgs([])).toEqual({
 		web: false,
+		claude: false,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -43,6 +45,7 @@ test('parseCliArgs converts port and keeps host', () => {
 		parseCliArgs(['--web', '--host', '0.0.0.0', '--port', '8080']),
 	).toEqual({
 		web: true,
+		claude: false,
 		host: '0.0.0.0',
 		port: 8080,
 		open: true,
@@ -53,6 +56,7 @@ test('parseCliArgs converts port and keeps host', () => {
 test('parseCliArgs ignores bare flag values that lack an argument', () => {
 	expect(parseCliArgs(['--web', '--port'])).toEqual({
 		web: true,
+		claude: false,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -60,6 +64,7 @@ test('parseCliArgs ignores bare flag values that lack an argument', () => {
 	});
 	expect(parseCliArgs(['--web', '--host'])).toEqual({
 		web: true,
+		claude: false,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -70,6 +75,7 @@ test('parseCliArgs ignores bare flag values that lack an argument', () => {
 test('parseCliArgs disables browser launch with --no-open', () => {
 	expect(parseCliArgs(['--web', '--no-open'])).toEqual({
 		web: true,
+		claude: false,
 		host: '127.0.0.1',
 		port: 5678,
 		open: false,
@@ -80,6 +86,18 @@ test('parseCliArgs disables browser launch with --no-open', () => {
 test('parseCliArgs keeps unknown flags permissive', () => {
 	expect(parseCliArgs(['--unknown', 'value', '--web'])).toEqual({
 		web: true,
+		claude: false,
+		host: '127.0.0.1',
+		port: 5678,
+		open: true,
+		help: false,
+	});
+});
+
+test('parseCliArgs enables the Claude provider', () => {
+	expect(parseCliArgs(['--claude'])).toEqual({
+		web: false,
+		claude: true,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,

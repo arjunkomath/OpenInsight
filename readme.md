@@ -35,6 +35,32 @@ export OPENROUTER_KEY=sk-...
 openinsight
 ```
 
+### Use Claude Code
+
+OpenInsight can use an existing [Claude Code](https://code.claude.com/docs/en/setup)
+login instead of OpenRouter. Install Claude Code 2.1.205 or newer, authenticate it,
+and opt in with `--claude`:
+
+```bash
+claude auth login
+openinsight --claude
+
+# Claude also works with the web UI
+openinsight --claude --web
+```
+
+OpenInsight verifies that the `claude` executable is in `PATH` before starting.
+It runs each inference in non-interactive plan mode with all built-in and MCP tools
+disabled; the database schema and query context are sent over stdin. The default
+model is `opus` and can be changed with `OPENINSIGHT_CLAUDE_MODEL`:
+
+```bash
+OPENINSIGHT_CLAUDE_MODEL=sonnet openinsight --claude
+```
+
+For a persistent provider choice, set `OPENINSIGHT_AI_PROVIDER=claude` instead
+of passing `--claude`. OpenRouter remains the default provider.
+
 ---
 
 Made with ❤️ for data exploration

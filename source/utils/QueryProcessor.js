@@ -1,5 +1,5 @@
 import {createConnection} from './DbConnector.js';
-import {createOpenRouterClient} from './OpenRouterClient.js';
+import {createAIClient} from './AIClient.js';
 import {isAbortError, throwIfAborted} from './abort.js';
 
 async function getSchema(conn, dbType) {
@@ -79,17 +79,16 @@ export async function fetchSchema(connectionString, dbType) {
 export async function generateQuery(
 	naturalLanguageQuery,
 	schema,
-	openRouterKey,
-	model,
+	aiConfig,
 	history,
 	onLog,
 	abortSignal,
 ) {
 	const log = message => onLog?.(message);
 
-	if (!openRouterKey) {
+	if (!aiConfig?.available) {
 		return {
-			error: 'OPENROUTER_KEY environment variable is required',
+			error: aiConfig?.unavailableMessage || 'AI provider is unavailable',
 			sql: null,
 		};
 	}
@@ -100,7 +99,7 @@ export async function generateQuery(
 	try {
 		throwIfAborted(abortSignal, 'Inference cancelled');
 
-		const aiClient = createOpenRouterClient(openRouterKey, model, log);
+		const aiClient = createAIClient(aiConfig, log);
 		log('Generating SQL with AI...');
 		const result = await aiClient.generateSQL(
 			naturalLanguageQuery,
@@ -139,8 +138,7 @@ export async function executeQuery(
 	sqlQuery,
 	connectionString,
 	schema,
-	openRouterKey,
-	model,
+	aiConfig,
 	onLog,
 	abortSignal,
 ) {
@@ -157,7 +155,7 @@ export async function executeQuery(
 	const maxRetries = 3;
 	let currentSql = sqlQuery;
 	let lastError = null;
-	const aiClient = createOpenRouterClient(openRouterKey, model, log);
+	let aiClient = null;
 
 	for (let attempt = 1; attempt <= maxRetries; attempt++) {
 		let conn;
@@ -165,7 +163,25 @@ export async function executeQuery(
 			throwIfAborted(abortSignal, 'Query execution cancelled');
 
 			if (attempt > 1) {
+				if (!aiConfig?.available) {
+					return {
+						error: `Query failed: ${lastError}. Automatic repair unavailable: ${aiConfig?.unavailableMessage || 'AI provider is unavailable'}`,
+						sql: currentSql,
+						data: null,
+					};
+				}
+
 				log(`Attempt ${attempt}/${maxRetries}: Fixing SQL...`);
+				try {
+					aiClient ||= createAIClient(aiConfig, log);
+				} catch (error) {
+					return {
+						error: `Query failed: ${lastError}. Automatic repair unavailable: ${error.message}`,
+						sql: currentSql,
+						data: null,
+					};
+				}
+
 				const result = await aiClient.fixSQL(
 					currentSql,
 					lastError,

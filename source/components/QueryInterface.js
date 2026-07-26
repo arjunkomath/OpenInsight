@@ -148,7 +148,8 @@ export default function QueryInterface({
 	onDeletePreset,
 	onDeleteSource,
 	onRequestQuit,
-	hasApiKey,
+	aiAvailable,
+	aiUnavailableMessage,
 	model,
 }) {
 	const [input, setInput] = useState('');
@@ -544,10 +545,10 @@ export default function QueryInterface({
 			return;
 		}
 
-		if (!hasApiKey) {
+		if (!aiAvailable) {
 			addMessage({
 				role: 'error',
-				content: 'OPENROUTER_KEY environment variable is required',
+				content: aiUnavailableMessage,
 			});
 			return;
 		}
@@ -859,7 +860,7 @@ export default function QueryInterface({
 					{source.name}
 				</text>
 				<text fg={theme.gray}> ({source.type})</text>
-				{!hasApiKey && <text fg={theme.red}> [No API Key]</text>}
+				{!aiAvailable && <text fg={theme.red}> [AI unavailable]</text>}
 			</box>
 
 			<scrollbox

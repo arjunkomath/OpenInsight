@@ -268,12 +268,13 @@ const renderTopbar = () => {
 		: '<span class="muted">No source selected</span>';
 
 	const model = state.status?.model;
+	const provider = state.status?.provider;
 	el.topbarMeta.innerHTML = [
 		model
-			? `<span class="tag" title="Model used for SQL generation">${escapeHtml(model)}</span>`
+			? `<span class="tag" title="Model used for SQL generation">${escapeHtml(provider ? `${provider} / ${model}` : model)}</span>`
 			: '',
-		state.status && !state.status.hasApiKey
-			? '<span class="tag tag-warn">No API key</span>'
+		state.status && !state.status.available
+			? '<span class="tag tag-warn">AI unavailable</span>'
 			: '',
 		state.status?.configDir
 			? `<span class="tag tag-quiet" title="${escapeHtml(state.status.configDir)}">Local config</span>`
@@ -448,9 +449,9 @@ const renderSchema = () => {
 const renderBanner = () => {
 	const messages = [];
 
-	if (state.status && !state.status.hasApiKey) {
+	if (state.status && !state.status.available) {
 		messages.push(
-			'<div class="notice">Set <code>OPENROUTER_KEY</code> to generate SQL from questions. You can still write and run SQL by hand.</div>',
+			`<div class="notice">${escapeHtml(state.status.unavailableMessage)}. You can still write and run SQL by hand.</div>`,
 		);
 	}
 
@@ -465,7 +466,7 @@ const renderBanner = () => {
 
 const renderComposer = () => {
 	const ready = Boolean(state.selectedSourceId);
-	const canGenerate = ready && state.status?.hasApiKey !== false;
+	const canGenerate = ready && state.status?.available !== false;
 	const onboarding = state.status !== null && state.sources.length === 0;
 
 	el.onboarding.hidden = !onboarding;

@@ -1,4 +1,3 @@
-import process from 'node:process';
 import React, {useEffect, useRef, useState} from 'react';
 import {useKeyboard, useRenderer, useSelectionHandler} from '@opentui/react';
 import {TextAttributes} from '@opentui/core';
@@ -21,8 +20,6 @@ import {
 	fetchSchema,
 } from './utils/QueryProcessor.js';
 
-const {OPENROUTER_KEY, OPENROUTER_MODEL = 'google/gemini-2.5-flash'} =
-	process.env;
 const COPY_FEEDBACK_DURATION_MS = 1500;
 
 function ClipboardToast() {
@@ -50,7 +47,7 @@ function ClipboardToast() {
 	);
 }
 
-export default function App({onRequestQuit = () => {}}) {
+export default function App({aiConfig, onRequestQuit = () => {}}) {
 	const [appState, setAppState] = useState('manage-sources');
 	const [dataSources, setDataSources] = useState(loadDataSources);
 	const [selectedSource, setSelectedSource] = useState(null);
@@ -130,9 +127,9 @@ export default function App({onRequestQuit = () => {}}) {
 	};
 
 	const handleGenerateQuery = async (query, history, onLog, abortSignal) => {
-		if (!OPENROUTER_KEY) {
+		if (!aiConfig.available) {
 			return {
-				error: 'OPENROUTER_KEY environment variable is required',
+				error: aiConfig.unavailableMessage,
 				sql: null,
 			};
 		}
@@ -141,15 +138,7 @@ export default function App({onRequestQuit = () => {}}) {
 			return {error: 'Database schema not loaded', sql: null};
 		}
 
-		return generateQuery(
-			query,
-			schema,
-			OPENROUTER_KEY,
-			OPENROUTER_MODEL,
-			history,
-			onLog,
-			abortSignal,
-		);
+		return generateQuery(query, schema, aiConfig, history, onLog, abortSignal);
 	};
 
 	const handleExecuteQuery = async (sql, onLog, abortSignal) => {
@@ -161,8 +150,7 @@ export default function App({onRequestQuit = () => {}}) {
 			sql,
 			selectedSource.connectionString,
 			schema,
-			OPENROUTER_KEY,
-			OPENROUTER_MODEL,
+			aiConfig,
 			onLog,
 			abortSignal,
 		);
@@ -198,8 +186,9 @@ export default function App({onRequestQuit = () => {}}) {
 	if (appState === 'query') {
 		content = (
 			<QueryInterface
-				hasApiKey={Boolean(OPENROUTER_KEY)}
-				model={OPENROUTER_MODEL}
+				aiAvailable={aiConfig.available}
+				aiUnavailableMessage={aiConfig.unavailableMessage}
+				model={aiConfig.model}
 				source={selectedSource}
 				sources={dataSources}
 				schema={schema}
