@@ -10,6 +10,7 @@ const helpText = `
 			--web       Start the local web UI instead of the TUI
 			--host      Host for web mode (default: 127.0.0.1)
 			--port      Port for web mode (default: 5678)
+			--no-open   Do not open the browser in web mode
 			--help      Show help
 
 		Examples
@@ -26,7 +27,7 @@ if (flags.help) {
 
 if (flags.web) {
 	const {startWebServer} = await import('./web/server.js');
-	startWebServer({host: flags.host, port: flags.port});
+	startWebServer({host: flags.host, port: flags.port, open: flags.open});
 	await new Promise(() => {});
 }
 

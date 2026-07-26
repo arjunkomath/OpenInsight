@@ -33,6 +33,7 @@ test('parseCliArgs applies defaults', () => {
 		web: false,
 		host: '127.0.0.1',
 		port: 5678,
+		open: true,
 		help: false,
 	});
 });
@@ -44,6 +45,7 @@ test('parseCliArgs converts port and keeps host', () => {
 		web: true,
 		host: '0.0.0.0',
 		port: 8080,
+		open: true,
 		help: false,
 	});
 });
@@ -53,12 +55,24 @@ test('parseCliArgs ignores bare flag values that lack an argument', () => {
 		web: true,
 		host: '127.0.0.1',
 		port: 5678,
+		open: true,
 		help: false,
 	});
 	expect(parseCliArgs(['--web', '--host'])).toEqual({
 		web: true,
 		host: '127.0.0.1',
 		port: 5678,
+		open: true,
+		help: false,
+	});
+});
+
+test('parseCliArgs disables browser launch with --no-open', () => {
+	expect(parseCliArgs(['--web', '--no-open'])).toEqual({
+		web: true,
+		host: '127.0.0.1',
+		port: 5678,
+		open: false,
 		help: false,
 	});
 });
@@ -68,6 +82,7 @@ test('parseCliArgs keeps unknown flags permissive', () => {
 		web: true,
 		host: '127.0.0.1',
 		port: 5678,
+		open: true,
 		help: false,
 	});
 });
