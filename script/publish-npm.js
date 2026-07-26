@@ -17,7 +17,9 @@ const distDir = path.resolve(process.env.DIST_DIR ?? 'dist');
 const stageDir = path.resolve(
 	process.env.STAGE_DIR ?? path.join(distDir, 'npm'),
 );
-const tag = process.env.GITHUB_REF_NAME;
+// RELEASE_TAG lets a workflow_dispatch run target an existing tag, since
+// GITHUB_REF_NAME is the branch name when the workflow is dispatched manually.
+const tag = process.env.RELEASE_TAG ?? process.env.GITHUB_REF_NAME;
 
 // Adding a target here is not enough to publish it: npm cannot attach a trusted
 // publisher to a package that does not exist, so a new platform package has to

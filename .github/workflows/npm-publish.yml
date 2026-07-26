@@ -7,6 +7,14 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish, for example v0.13.0
+        required: true
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 permissions:
   contents: read
@@ -29,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -83,7 +91,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -105,6 +113,17 @@ jobs:
           path: dist
           pattern: npm-openinsight-*
           merge-multiple: true
+
+      - name: Check trusted publishing prerequisites
+        run: |
+          echo "npm  $(npm --version)"
+          echo "node $(node --version)"
+          test -n "$ACTIONS_ID_TOKEN_REQUEST_URL" \
+            && echo "OIDC request url: present" \
+            || echo "OIDC request url: MISSING"
+          test -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            && echo "OIDC request token: present" \
+            || echo "OIDC request token: MISSING"
 
       - name: Publish packages
         run: bun script/publish-npm.js
