@@ -46,15 +46,15 @@
 	],
 	"dependencies": {
 		"@openrouter/ai-sdk-provider": "^1.5.4",
-		"@opentui/core": "^0.2.10",
-		"@opentui/react": "^0.2.10",
-		"ai": "^5",
-		"react": "^19.2.0",
-		"zod": "^4.2.1"
+		"@opentui/core": "^0.2.16",
+		"@opentui/react": "^0.2.16",
+		"ai": "^5.0.220",
+		"react": "^19.2.8",
+		"zod": "^4.4.3"
 	},
 	"devDependencies": {
-		"@types/react": "^19.0.0",
-		"prettier": "^3.0.0"
+		"@types/react": "^19.2.17",
+		"prettier": "^3.9.6"
 	},
 	"prettier": {
 		"useTabs": true,
