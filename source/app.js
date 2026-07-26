@@ -1,10 +1,12 @@
 import process from 'node:process';
-import React, {useState} from 'react';
-import {useKeyboard} from '@opentui/react';
+import React, {useEffect, useRef, useState} from 'react';
+import {useKeyboard, useRenderer, useSelectionHandler} from '@opentui/react';
+import {TextAttributes} from '@opentui/core';
 import DataSourceManager from './components/DataSourceManager.js';
 import QueryInterface from './components/QueryInterface.js';
 import Spinner from './components/Spinner.js';
 import {theme} from './theme.js';
+import {copySelectionToClipboard} from './utils/clipboard.js';
 import {
 	loadDataSources,
 	addDataSource,
@@ -21,6 +23,32 @@ import {
 
 const {OPENROUTER_KEY, OPENROUTER_MODEL = 'google/gemini-2.5-flash'} =
 	process.env;
+const COPY_FEEDBACK_DURATION_MS = 1500;
+
+function ClipboardToast() {
+	return (
+		<box
+			style={{
+				position: 'absolute',
+				top: 1,
+				right: 2,
+				zIndex: 100,
+				borderStyle: 'rounded',
+				borderColor: theme.green,
+				backgroundColor: theme.background,
+				paddingX: 1,
+			}}
+		>
+			<text
+				fg={theme.green}
+				attributes={TextAttributes.BOLD}
+				selectable={false}
+			>
+				✓ Copied to clipboard
+			</text>
+		</box>
+	);
+}
 
 export default function App({onRequestQuit = () => {}}) {
 	const [appState, setAppState] = useState('manage-sources');
@@ -28,6 +56,26 @@ export default function App({onRequestQuit = () => {}}) {
 	const [selectedSource, setSelectedSource] = useState(null);
 	const [schema, setSchema] = useState(null);
 	const [schemaError, setSchemaError] = useState(null);
+	const [showClipboardToast, setShowClipboardToast] = useState(false);
+	const clipboardToastTimerRef = useRef(null);
+	const renderer = useRenderer();
+
+	useSelectionHandler(selection => {
+		if (!copySelectionToClipboard(renderer, selection)) return;
+
+		setShowClipboardToast(true);
+		clearTimeout(clipboardToastTimerRef.current);
+		clipboardToastTimerRef.current = setTimeout(() => {
+			setShowClipboardToast(false);
+		}, COPY_FEEDBACK_DURATION_MS);
+	});
+
+	useEffect(
+		() => () => {
+			clearTimeout(clipboardToastTimerRef.current);
+		},
+		[],
+	);
 
 	useKeyboard(key => {
 		if (appState === 'query') return;
@@ -120,8 +168,10 @@ export default function App({onRequestQuit = () => {}}) {
 		);
 	};
 
+	let content = null;
+
 	if (appState === 'manage-sources') {
-		return (
+		content = (
 			<DataSourceManager
 				sources={dataSources}
 				onSelectSource={handleSelectSource}
@@ -131,7 +181,7 @@ export default function App({onRequestQuit = () => {}}) {
 	}
 
 	if (appState === 'loading-schema') {
-		return (
+		content = (
 			<box style={{paddingX: 2, paddingY: 1, flexDirection: 'column'}}>
 				<text fg={theme.cyan} attributes={1}>
 					{selectedSource.name}
@@ -146,7 +196,7 @@ export default function App({onRequestQuit = () => {}}) {
 	}
 
 	if (appState === 'query') {
-		return (
+		content = (
 			<QueryInterface
 				hasApiKey={Boolean(OPENROUTER_KEY)}
 				model={OPENROUTER_MODEL}
@@ -167,5 +217,10 @@ export default function App({onRequestQuit = () => {}}) {
 		);
 	}
 
-	return null;
+	return (
+		<box style={{width: '100%', height: '100%'}}>
+			{content}
+			{showClipboardToast ? <ClipboardToast /> : null}
+		</box>
+	);
 }
