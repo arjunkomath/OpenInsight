@@ -2,6 +2,8 @@ import {join} from 'node:path';
 import process from 'node:process';
 import appJs from './client/app.js' with {type: 'text'};
 import faviconSvg from './client/favicon.svg' with {type: 'text'};
+import fontMedium from './client/fonts/IoskeleyMono-Medium.woff2' with {type: 'file'};
+import fontRegular from './client/fonts/IoskeleyMono-Regular.woff2' with {type: 'file'};
 import indexHtml from './client/index.html' with {type: 'text'};
 import stylesCss from './client/styles.css' with {type: 'text'};
 import {
@@ -35,6 +37,14 @@ const assets = {
 	'/favicon.svg': {
 		body: faviconSvg,
 		contentType: 'image/svg+xml; charset=utf-8',
+	},
+	'/fonts/IoskeleyMono-Regular.woff2': {
+		body: Bun.file(fontRegular),
+		contentType: 'font/woff2',
+	},
+	'/fonts/IoskeleyMono-Medium.woff2': {
+		body: Bun.file(fontMedium),
+		contentType: 'font/woff2',
 	},
 };
 
