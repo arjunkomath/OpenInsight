@@ -71,6 +71,65 @@ test('Claude client accepts projected result envelopes without discriminators', 
 	});
 });
 
+test('Claude client accepts a result envelope wrapped in an output array', async () => {
+	const client = createClaudeCliClient('/claude', 'opus', null, {
+		spawn: () =>
+			fakeChild(
+				jsonResponse([
+					{type: 'system', subtype: 'init'},
+					{
+						type: 'result',
+						subtype: 'success',
+						is_error: false,
+						structured_output: {
+							sql: 'SELECT COUNT(*) FROM "Tool" LIMIT 1000',
+						},
+						ttft_ms: 5486,
+					},
+				]),
+			),
+	});
+
+	expect(await client.generateSQL('count tools', {}, [])).toEqual({
+		sql: 'SELECT COUNT(*) FROM "Tool" LIMIT 1000',
+		error: null,
+	});
+});
+
+test('Claude client accepts serialized and nested structured output', async () => {
+	const serializedClient = createClaudeCliClient('/claude', 'opus', null, {
+		spawn: () =>
+			fakeChild(
+				jsonResponse({
+					type: 'result',
+					subtype: 'success',
+					structured_output: JSON.stringify({
+						sql: 'SELECT 1 LIMIT 1000',
+					}),
+				}),
+			),
+	});
+	const nestedClient = createClaudeCliClient('/claude', 'opus', null, {
+		spawn: () =>
+			fakeChild(
+				jsonResponse({
+					type: 'result',
+					subtype: 'success',
+					result: {structured_output: {sql: 'SELECT 2 LIMIT 1000'}},
+				}),
+			),
+	});
+
+	expect(await serializedClient.generateSQL('q', {}, [])).toEqual({
+		sql: 'SELECT 1 LIMIT 1000',
+		error: null,
+	});
+	expect(await nestedClient.generateSQL('q', {}, [])).toEqual({
+		sql: 'SELECT 2 LIMIT 1000',
+		error: null,
+	});
+});
+
 test('Claude client emits full subprocess diagnostics only in verbose mode', async () => {
 	const logs = [];
 	const client = createClaudeCliClient(

@@ -243,6 +243,8 @@ async function runClaude({
 		} catch {
 			throw new Error('Claude CLI returned invalid JSON');
 		}
+		payload = selectResultPayload(payload);
+		verboseLog(`Parsed result payload shape: ${describePayload(payload)}`);
 
 		const explicitError =
 			!payload ||
@@ -260,9 +262,11 @@ async function runClaude({
 			);
 		}
 
-		const sql = extractSQL(payload.structured_output?.sql || payload.result);
+		const sql = extractPayloadSQL(payload);
 		if (!sql) {
-			throw new Error('Claude CLI returned no structured SQL');
+			throw new Error(
+				`Claude CLI returned no structured SQL (${describePayload(payload)})`,
+			);
 		}
 
 		log(`[AI Response] Model: ${model}`);
@@ -296,4 +300,55 @@ function extractSQL(value) {
 
 	const fenced = text.match(/^```(?:sql)?\s*\n?([\s\S]*?)\n?```$/i);
 	return (fenced?.[1] || text).trim() || null;
+}
+
+function selectResultPayload(payload) {
+	if (!Array.isArray(payload)) return payload;
+
+	return (
+		payload.findLast(
+			item =>
+				item &&
+				typeof item === 'object' &&
+				(item.type === 'result' || 'structured_output' in item),
+		) || payload.at(-1)
+	);
+}
+
+function extractPayloadSQL(payload) {
+	const structuredOutput = parseJsonObject(payload?.structured_output);
+	const nestedResult = parseJsonObject(payload?.result);
+	const nestedStructuredOutput = parseJsonObject(
+		nestedResult?.structured_output,
+	);
+
+	return extractSQL(
+		structuredOutput?.sql ||
+			nestedStructuredOutput?.sql ||
+			nestedResult?.sql ||
+			payload?.result,
+	);
+}
+
+function parseJsonObject(value) {
+	if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+	if (typeof value !== 'string') return null;
+
+	try {
+		const parsed = JSON.parse(value);
+		return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+			? parsed
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+function describePayload(payload) {
+	if (payload === null) return 'null';
+	if (Array.isArray(payload)) return `array(${payload.length})`;
+	if (typeof payload !== 'object') return typeof payload;
+
+	const keys = Object.keys(payload);
+	return `object keys: ${keys.length > 0 ? keys.join(', ') : '<none>'}`;
 }
