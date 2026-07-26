@@ -13,11 +13,12 @@ Install with Homebrew:
 brew install arjunkomath/tap/openinsight
 ```
 
-Or install with [Bun](https://bun.sh/) (>=1.3):
+Or install from npm (a prebuilt binary is downloaded for your platform, no Bun
+required):
 
 ```bash
 # 1. Install
-bun add -g openinsight
+npm install -g openinsight
 
 # Set your OpenRouter API key
 export OPENROUTER_KEY=sk-...

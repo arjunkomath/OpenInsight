@@ -1,6 +1,6 @@
 {
 	"name": "openinsight",
-	"version": "0.12.0",
+	"version": "0.13.0",
 	"description": "Query your database with natural language",
 	"license": "MIT",
 	"author": "Arjun Komath",
@@ -28,10 +28,12 @@
 		"opentui",
 		"bun"
 	],
-	"bin": "source/cli.js",
+	"bin": {
+		"openinsight": "bin/openinsight.js"
+	},
 	"type": "module",
 	"engines": {
-		"bun": ">=1.3.0"
+		"node": ">=18"
 	},
 	"scripts": {
 		"start": "bun source/cli.js",
@@ -42,19 +44,17 @@
 		"test": "prettier --check . && bun test"
 	},
 	"files": [
-		"source"
+		"bin"
 	],
-	"dependencies": {
+	"devDependencies": {
 		"@openrouter/ai-sdk-provider": "^1.5.4",
 		"@opentui/core": "^0.2.16",
 		"@opentui/react": "^0.2.16",
+		"@types/react": "^19.2.17",
 		"ai": "^5.0.220",
+		"prettier": "^3.9.6",
 		"react": "^19.2.8",
 		"zod": "^4.4.3"
-	},
-	"devDependencies": {
-		"@types/react": "^19.2.17",
-		"prettier": "^3.9.6"
 	},
 	"prettier": {
 		"useTabs": true,
