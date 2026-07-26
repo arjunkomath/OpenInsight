@@ -7,6 +7,7 @@ test('resolveAIConfig preserves OpenRouter defaults', () => {
 	expect(config).toEqual({
 		provider: 'openrouter',
 		model: 'google/gemini-2.5-flash',
+		verbose: false,
 		apiKey: undefined,
 		available: false,
 		unavailableMessage: 'OPENROUTER_KEY environment variable is required',
@@ -16,6 +17,7 @@ test('resolveAIConfig preserves OpenRouter defaults', () => {
 test('resolveAIConfig selects and verifies Claude', () => {
 	const config = resolveAIConfig({
 		provider: 'claude',
+		verbose: true,
 		env: {OPENINSIGHT_CLAUDE_MODEL: 'sonnet'},
 		which: command => (command === 'claude' ? '/usr/bin/claude' : null),
 	});
@@ -23,6 +25,7 @@ test('resolveAIConfig selects and verifies Claude', () => {
 	expect(config).toEqual({
 		provider: 'claude',
 		model: 'sonnet',
+		verbose: true,
 		binaryPath: '/usr/bin/claude',
 		available: true,
 		unavailableMessage: null,
@@ -50,6 +53,7 @@ test('publicAIStatus omits credentials and the resolved binary path', () => {
 	const status = publicAIStatus({
 		provider: 'claude',
 		model: 'opus',
+		verbose: true,
 		binaryPath: '/secret/path/claude',
 		apiKey: 'secret',
 		available: true,
@@ -59,6 +63,7 @@ test('publicAIStatus omits credentials and the resolved binary path', () => {
 	expect(status).toEqual({
 		provider: 'claude',
 		model: 'opus',
+		verbose: true,
 		available: true,
 		unavailableMessage: null,
 	});

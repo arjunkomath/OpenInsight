@@ -189,6 +189,7 @@ export default function App({aiConfig, onRequestQuit = () => {}}) {
 				aiAvailable={aiConfig.available}
 				aiUnavailableMessage={aiConfig.unavailableMessage}
 				model={aiConfig.model}
+				verbose={aiConfig.verbose}
 				source={selectedSource}
 				sources={dataSources}
 				schema={schema}

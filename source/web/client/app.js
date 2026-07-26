@@ -276,6 +276,7 @@ const renderTopbar = () => {
 		state.status && !state.status.available
 			? '<span class="tag tag-warn">AI unavailable</span>'
 			: '',
+		state.status?.verbose ? '<span class="tag tag-warn">Verbose</span>' : '',
 		state.status?.configDir
 			? `<span class="tag tag-quiet" title="${escapeHtml(state.status.configDir)}">Local config</span>`
 			: '',
@@ -609,7 +610,7 @@ const renderActivity = () => {
 	}
 
 	el.activity.innerHTML = `
-		<details class="activity">
+		<details class="activity" ${state.status?.verbose ? 'open' : ''}>
 			<summary>Activity<span class="rail-count">${state.logs.length}</span></summary>
 			<div class="timeline">${state.logs.map(log => `<div>${escapeHtml(log)}</div>`).join('')}</div>
 		</details>
@@ -761,7 +762,14 @@ const generateSql = async event => {
 				history: state.messages.slice(-10),
 			}),
 		});
-		if (result.error) throw new Error(result.error);
+		if (result.error) {
+			setState({
+				error: result.error,
+				logs: result.logs || [],
+				busy: null,
+			});
+			return;
+		}
 
 		setState({
 			pendingSql: result.sql || '',
@@ -785,21 +793,26 @@ const executeSql = async () => {
 	const sql = state.pendingSql.trim();
 	if (!sql || !state.selectedSourceId || isBusy()) return;
 
+	const generationLogs = state.logs;
 	startElapsed();
-	setState({busy: 'run', error: '', logs: [], results: null});
+	setState({busy: 'run', error: '', results: null});
 	try {
 		const result = await api('/api/query/execute', {
 			method: 'POST',
 			body: JSON.stringify({sourceId: state.selectedSourceId, sql}),
 		});
-		if (result.error) throw new Error(result.error);
+		const logs = [...generationLogs, ...(result.logs || [])];
+		if (result.error) {
+			setState({error: result.error, logs, busy: null});
+			return;
+		}
 
 		const finalSql = result.sql || sql;
 		setState({
 			pendingSql: finalSql,
 			resultsSql: finalSql,
 			results: result.data || [],
-			logs: result.logs || [],
+			logs,
 			messages: [...state.messages, {role: 'assistant', content: finalSql}],
 			turns: state.turns.map((turn, index) =>
 				index === 0 ? {...turn, sql: finalSql} : turn,

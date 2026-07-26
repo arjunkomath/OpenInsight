@@ -15,13 +15,18 @@ export function createClaudeCliClient(
 	binaryPath,
 	model,
 	onLog,
-	{spawn = Bun.spawn, killGraceMs = 250} = {},
+	{spawn = Bun.spawn, killGraceMs = 250, verbose = false} = {},
 ) {
 	if (!binaryPath) {
 		throw new Error('Claude Code CLI is required');
 	}
 
-	const log = message => onLog?.(message);
+	const redactBinaryPath = value =>
+		String(value).split(binaryPath).join('<claude-binary>');
+	const log = message => onLog?.(redactBinaryPath(message));
+	const verboseLog = message => {
+		if (verbose) log(`[Verbose][Claude] ${message}`);
+	};
 
 	return {
 		generateSQL: (query, schema, history, abortSignal) =>
@@ -32,6 +37,7 @@ export function createClaudeCliClient(
 				schema,
 				history,
 				log,
+				verboseLog,
 				abortSignal,
 				spawn,
 				killGraceMs,
@@ -44,6 +50,7 @@ export function createClaudeCliClient(
 				error,
 				schema,
 				log,
+				verboseLog,
 				abortSignal,
 				spawn,
 				killGraceMs,
@@ -69,6 +76,7 @@ async function generateSQL({
 	schema,
 	history,
 	log,
+	verboseLog,
 	abortSignal,
 	spawn,
 	killGraceMs,
@@ -99,6 +107,7 @@ Generate the SQL for the current request.`;
 		prompt,
 		operation: 'generate SQL',
 		log,
+		verboseLog,
 		abortSignal,
 		spawn,
 		killGraceMs,
@@ -112,6 +121,7 @@ async function fixSQL({
 	error,
 	schema,
 	log,
+	verboseLog,
 	abortSignal,
 	spawn,
 	killGraceMs,
@@ -136,6 +146,7 @@ Return a corrected read-only SQL query. Preserve an existing LIMIT or use LIMIT 
 		prompt,
 		operation: 'fix SQL',
 		log,
+		verboseLog,
 		abortSignal,
 		spawn,
 		killGraceMs,
@@ -148,6 +159,7 @@ async function runClaude({
 	prompt,
 	operation,
 	log,
+	verboseLog,
 	abortSignal,
 	spawn,
 	killGraceMs,
@@ -176,16 +188,23 @@ async function runClaude({
 
 	let child;
 	let killTimer;
+	const startedAt = Date.now();
 	const abort = () => {
+		verboseLog('Abort requested; sending SIGTERM');
 		child?.kill('SIGTERM');
 		killTimer = setTimeout(() => {
 			if (child?.exitCode === null || child?.exitCode === undefined) {
+				verboseLog('Claude did not exit during grace period; sending SIGKILL');
 				child.kill('SIGKILL');
 			}
 		}, killGraceMs);
 	};
 
 	try {
+		verboseLog(
+			`Command argv: ${JSON.stringify(['claude', ...command.slice(1)])}`,
+		);
+		verboseLog(`Prompt (${prompt.length} chars):\n${prompt}`);
 		child = spawn(command, {
 			stdin: new Blob([prompt]),
 			stdout: 'pipe',
@@ -199,6 +218,11 @@ async function runClaude({
 			new Response(child.stderr).text(),
 			child.exited,
 		]);
+		verboseLog(
+			`Process exited with code ${exitCode} after ${Date.now() - startedAt}ms`,
+		);
+		verboseLog(`Raw stdout (${stdout.length} chars):\n${stdout || '<empty>'}`);
+		verboseLog(`Raw stderr (${stderr.length} chars):\n${stderr || '<empty>'}`);
 
 		if (abortSignal?.aborted) {
 			throw createAbortError('Inference cancelled');
@@ -247,8 +271,12 @@ async function runClaude({
 	} catch (error) {
 		if (isAbortError(error)) throw error;
 
-		log(`[AI Error] ${error.message}`);
-		return {sql: null, error: `Failed to ${operation}: ${error.message}`};
+		const errorMessage = String(error?.message || error)
+			.split(binaryPath)
+			.join('<claude-binary>');
+		verboseLog(`Exception:\n${error.stack || errorMessage}`);
+		log(`[AI Error] ${errorMessage}`);
+		return {sql: null, error: `Failed to ${operation}: ${errorMessage}`};
 	} finally {
 		abortSignal?.removeEventListener('abort', abort);
 		clearTimeout(killTimer);

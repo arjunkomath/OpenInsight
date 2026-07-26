@@ -17,6 +17,23 @@ test('executeQuery rejects non-read-only SQL before connecting', async () => {
 	});
 });
 
+test('executeQuery redacts database credentials from verbose logs', async () => {
+	const logs = [];
+	const result = await executeQuery(
+		'DELETE FROM users',
+		'postgres://user:pa/ss@localhost/database',
+		{},
+		{provider: 'claude', model: 'opus', available: true, verbose: true},
+		message => logs.push(message),
+	);
+
+	expect(result.error).toBe('Only SELECT queries are allowed');
+	expect(logs.join('\n')).toContain(
+		'postgres://<credentials>@localhost/database',
+	);
+	expect(logs.join('\n')).not.toContain('user:pa/ss');
+});
+
 test('executeQuery does not require AI when the first attempt succeeds', async () => {
 	const path = `/tmp/openinsight-query-${crypto.randomUUID()}.db`;
 	const connectionString = `sqlite://${path}`;

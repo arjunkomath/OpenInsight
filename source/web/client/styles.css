@@ -871,6 +871,8 @@ tbody tr:hover td {
 .timeline div {
 	font-size: 0.76rem;
 	color: var(--muted);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
 }
 
 /* ---- dialogs ---- */

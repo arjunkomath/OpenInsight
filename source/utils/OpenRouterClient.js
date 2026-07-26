@@ -7,22 +7,63 @@ const sqlResponseSchema = z.object({
 	sql: z.string().describe('The SQL query to execute'),
 });
 
-export function createOpenRouterClient(apiKey, model, onLog) {
+export function createOpenRouterClient(
+	apiKey,
+	model,
+	onLog,
+	{
+		verbose = false,
+		generate = generateObject,
+		createProvider = createOpenRouter,
+	} = {},
+) {
 	if (!apiKey) {
 		throw new Error('OpenRouter API key is required');
 	}
 
-	const log = message => onLog?.(message);
+	const redactApiKey = value =>
+		String(value).split(apiKey).join('<redacted-api-key>');
+	const log = message => onLog?.(redactApiKey(message));
+	const verboseLog = messageOrFactory => {
+		if (!verbose) return;
+		const message =
+			typeof messageOrFactory === 'function'
+				? messageOrFactory()
+				: messageOrFactory;
+		log(`[Verbose][OpenRouter] ${message}`);
+	};
 
-	const openrouter = createOpenRouter({
+	const openrouter = createProvider({
 		apiKey,
 	});
 
 	return {
 		generateSQL: (query, schema, history, abortSignal) =>
-			generateSQL(openrouter, model, query, schema, history, log, abortSignal),
+			generateSQL(
+				openrouter,
+				model,
+				query,
+				schema,
+				history,
+				log,
+				verboseLog,
+				redactApiKey,
+				generate,
+				abortSignal,
+			),
 		fixSQL: (sql, error, schema, abortSignal) =>
-			fixSQL(openrouter, model, sql, error, schema, log, abortSignal),
+			fixSQL(
+				openrouter,
+				model,
+				sql,
+				error,
+				schema,
+				log,
+				verboseLog,
+				redactApiKey,
+				generate,
+				abortSignal,
+			),
 	};
 }
 
@@ -33,6 +74,9 @@ async function generateSQL(
 	schema,
 	history,
 	log,
+	verboseLog,
+	redactApiKey,
+	generate,
 	abortSignal,
 ) {
 	const systemPrompt = `You are a SQL expert. Convert natural language queries to SQL.
@@ -49,9 +93,14 @@ Database schema: ${JSON.stringify(schema)}`;
 	}
 
 	const messages = [...history, {role: 'user', content: naturalLanguageQuery}];
+	verboseLog(`Model: ${model}`);
+	verboseLog(`System prompt (${systemPrompt.length} chars):\n${systemPrompt}`);
+	verboseLog(`Messages:\n${safeJson(messages)}`);
+	verboseLog('Generation settings: temperature=0.3, structured SQL output');
 
 	try {
-		const {object, usage} = await generateObject({
+		const startedAt = Date.now();
+		const generation = await generate({
 			model: openrouter(model),
 			schema: sqlResponseSchema,
 			system: systemPrompt,
@@ -59,6 +108,11 @@ Database schema: ${JSON.stringify(schema)}`;
 			temperature: 0.3,
 			abortSignal,
 		});
+		const {object, usage} = generation;
+		verboseLog(`Request completed in ${Date.now() - startedAt}ms`);
+		verboseLog(
+			() => `Generation result:\n${formatGenerationResult(generation)}`,
+		);
 
 		log(`[AI Response] Model: ${model}`);
 		if (usage) {
@@ -80,8 +134,10 @@ Database schema: ${JSON.stringify(schema)}`;
 			throw error;
 		}
 
-		log(`[AI Error] ${error.message}`);
-		return {sql: null, error: `Failed to generate SQL: ${error.message}`};
+		const errorMessage = redactApiKey(error?.message || error);
+		verboseLog(`Exception:\n${error.stack || errorMessage}`);
+		log(`[AI Error] ${errorMessage}`);
+		return {sql: null, error: `Failed to generate SQL: ${errorMessage}`};
 	}
 }
 
@@ -92,6 +148,9 @@ async function fixSQL(
 	errorMessage,
 	schema,
 	log,
+	verboseLog,
+	redactApiKey,
+	generate,
 	abortSignal,
 ) {
 	const systemPrompt = `You are a SQL expert. Fix the SQL query based on the error message.
@@ -102,21 +161,32 @@ IMPORTANT: Always wrap table and column names in double quotes to preserve case 
 IMPORTANT: Always include a LIMIT clause to prevent excessive data retrieval. Preserve any existing LIMIT or use LIMIT 1000 if none exists.`;
 
 	log(`[AI Request] Fixing SQL error: ${errorMessage}`);
+	const messages = [
+		{
+			role: 'user',
+			content: `SQL Query:\n${failedSql}\n\nError:\n${errorMessage}\n\nPlease fix the query.`,
+		},
+	];
+	verboseLog(`Model: ${model}`);
+	verboseLog(`System prompt (${systemPrompt.length} chars):\n${systemPrompt}`);
+	verboseLog(`Messages:\n${safeJson(messages)}`);
+	verboseLog('Generation settings: temperature=0.2, structured SQL output');
 
 	try {
-		const {object, usage} = await generateObject({
+		const startedAt = Date.now();
+		const generation = await generate({
 			model: openrouter(model),
 			schema: sqlResponseSchema,
 			system: systemPrompt,
-			messages: [
-				{
-					role: 'user',
-					content: `SQL Query:\n${failedSql}\n\nError:\n${errorMessage}\n\nPlease fix the query.`,
-				},
-			],
+			messages,
 			temperature: 0.2,
 			abortSignal,
 		});
+		const {object, usage} = generation;
+		verboseLog(`Request completed in ${Date.now() - startedAt}ms`);
+		verboseLog(
+			() => `Generation result:\n${formatGenerationResult(generation)}`,
+		);
 
 		if (usage) {
 			log(
@@ -135,7 +205,33 @@ IMPORTANT: Always include a LIMIT clause to prevent excessive data retrieval. Pr
 			throw error;
 		}
 
-		log(`[AI Error] ${error.message}`);
-		return {sql: null, error: `Failed to fix SQL: ${error.message}`};
+		const errorMessage = redactApiKey(error?.message || error);
+		verboseLog(`Exception:\n${error.stack || errorMessage}`);
+		log(`[AI Error] ${errorMessage}`);
+		return {sql: null, error: `Failed to fix SQL: ${errorMessage}`};
+	}
+}
+
+function formatGenerationResult(generation) {
+	return safeJson({
+		object: generation.object,
+		usage: generation.usage,
+		finishReason: generation.finishReason,
+		warnings: generation.warnings,
+		providerMetadata: generation.providerMetadata,
+		request: generation.request,
+		response: generation.response,
+	});
+}
+
+function safeJson(value) {
+	try {
+		return JSON.stringify(
+			value,
+			(_key, item) => (typeof item === 'bigint' ? item.toString() : item),
+			2,
+		);
+	} catch (error) {
+		return `<unable to serialize: ${error.message}>`;
 	}
 }

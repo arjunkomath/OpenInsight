@@ -61,6 +61,23 @@ OPENINSIGHT_CLAUDE_MODEL=sonnet openinsight --claude
 For a persistent provider choice, set `OPENINSIGHT_AI_PROVIDER=claude` instead
 of passing `--claude`. OpenRouter remains the default provider.
 
+### Verbose diagnostics
+
+Pass `--verbose` to show detailed diagnostics in the TUI transcript or the web
+UI's expanded Activity panel:
+
+```bash
+openinsight --claude --verbose
+openinsight --web --verbose
+```
+
+Verbose output includes complete AI prompts, schemas, conversation history,
+provider responses and metadata, subprocess stdout/stderr, generated and repaired
+SQL, database timing, result columns, and result data (capped at 20,000 characters
+per entry). Connection credentials and the resolved Claude executable path are not
+logged. Because prompts and query results can contain sensitive application data,
+enable verbose mode only while diagnosing a problem.
+
 ---
 
 Made with ❤️ for data exploration

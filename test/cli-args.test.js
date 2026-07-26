@@ -26,6 +26,7 @@ test('--help prints usage and exits 0', async () => {
 	expect(stdout).toContain('Usage');
 	expect(stdout).toContain('--web');
 	expect(stdout).toContain('--claude');
+	expect(stdout).toContain('--verbose');
 	expect(stdout).toContain('--port');
 });
 
@@ -33,6 +34,7 @@ test('parseCliArgs applies defaults', () => {
 	expect(parseCliArgs([])).toEqual({
 		web: false,
 		claude: false,
+		verbose: false,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -46,6 +48,7 @@ test('parseCliArgs converts port and keeps host', () => {
 	).toEqual({
 		web: true,
 		claude: false,
+		verbose: false,
 		host: '0.0.0.0',
 		port: 8080,
 		open: true,
@@ -57,6 +60,7 @@ test('parseCliArgs ignores bare flag values that lack an argument', () => {
 	expect(parseCliArgs(['--web', '--port'])).toEqual({
 		web: true,
 		claude: false,
+		verbose: false,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -65,6 +69,7 @@ test('parseCliArgs ignores bare flag values that lack an argument', () => {
 	expect(parseCliArgs(['--web', '--host'])).toEqual({
 		web: true,
 		claude: false,
+		verbose: false,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -76,6 +81,7 @@ test('parseCliArgs disables browser launch with --no-open', () => {
 	expect(parseCliArgs(['--web', '--no-open'])).toEqual({
 		web: true,
 		claude: false,
+		verbose: false,
 		host: '127.0.0.1',
 		port: 5678,
 		open: false,
@@ -87,6 +93,7 @@ test('parseCliArgs keeps unknown flags permissive', () => {
 	expect(parseCliArgs(['--unknown', 'value', '--web'])).toEqual({
 		web: true,
 		claude: false,
+		verbose: false,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -98,6 +105,19 @@ test('parseCliArgs enables the Claude provider', () => {
 	expect(parseCliArgs(['--claude'])).toEqual({
 		web: false,
 		claude: true,
+		verbose: false,
+		host: '127.0.0.1',
+		port: 5678,
+		open: true,
+		help: false,
+	});
+});
+
+test('parseCliArgs enables verbose UI logging', () => {
+	expect(parseCliArgs(['--verbose'])).toEqual({
+		web: false,
+		claude: false,
+		verbose: true,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,

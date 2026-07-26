@@ -71,6 +71,57 @@ test('Claude client accepts projected result envelopes without discriminators', 
 	});
 });
 
+test('Claude client emits full subprocess diagnostics only in verbose mode', async () => {
+	const logs = [];
+	const client = createClaudeCliClient(
+		'/secret/path/claude',
+		'opus',
+		message => logs.push(message),
+		{
+			verbose: true,
+			spawn: () =>
+				fakeChild(
+					jsonResponse({
+						type: 'result',
+						subtype: 'success',
+						is_error: false,
+						structured_output: {sql: 'SELECT 1 LIMIT 1000'},
+					}),
+				),
+		},
+	);
+
+	await client.generateSQL('show one', {users: []}, []);
+	const output = logs.join('\n');
+	expect(output).toContain('[Verbose][Claude] Command argv:');
+	expect(output).toContain('[Verbose][Claude] Prompt');
+	expect(output).toContain('[Verbose][Claude] Raw stdout');
+	expect(output).toContain('[Verbose][Claude] Raw stderr');
+	expect(output).toContain('show one');
+	expect(output).not.toContain('/secret/path/claude');
+});
+
+test('Claude client redacts its executable path from failures', async () => {
+	const logs = [];
+	const binaryPath = '/secret/path/claude';
+	const client = createClaudeCliClient(
+		binaryPath,
+		'opus',
+		message => logs.push(message),
+		{
+			verbose: true,
+			spawn: () => {
+				throw new Error(`Failed to spawn ${binaryPath}`);
+			},
+		},
+	);
+
+	const result = await client.generateSQL('show one', {users: []}, []);
+	expect(result.error).toContain('<claude-binary>');
+	expect(result.error).not.toContain(binaryPath);
+	expect(logs.join('\n')).not.toContain(binaryPath);
+});
+
 test('Claude client rejects error envelopes and malformed output', async () => {
 	const errorClient = createClaudeCliClient('/claude', 'opus', null, {
 		spawn: () =>

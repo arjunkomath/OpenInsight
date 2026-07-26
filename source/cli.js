@@ -10,6 +10,7 @@ const helpText = `
 		Options
 			--web       Start the local web UI instead of the TUI
 			--claude    Use the installed Claude Code CLI instead of OpenRouter
+			--verbose   Show detailed AI and database diagnostics in the UI
 			--host      Host for web mode (default: 127.0.0.1)
 			--port      Port for web mode (default: 5678)
 			--no-open   Do not open the browser in web mode
@@ -30,7 +31,10 @@ if (flags.help) {
 
 let aiConfig;
 try {
-	aiConfig = resolveAIConfig({provider: flags.claude ? 'claude' : undefined});
+	aiConfig = resolveAIConfig({
+		provider: flags.claude ? 'claude' : undefined,
+		verbose: flags.verbose,
+	});
 } catch (error) {
 	console.error(`OpenInsight: ${error.message}`);
 	process.exit(1);

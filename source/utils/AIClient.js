@@ -7,11 +7,15 @@ export function createAIClient(config, onLog) {
 	}
 
 	if (config.provider === 'claude') {
-		return createClaudeCliClient(config.binaryPath, config.model, onLog);
+		return createClaudeCliClient(config.binaryPath, config.model, onLog, {
+			verbose: config.verbose,
+		});
 	}
 
 	if (config.provider === 'openrouter') {
-		return createOpenRouterClient(config.apiKey, config.model, onLog);
+		return createOpenRouterClient(config.apiKey, config.model, onLog, {
+			verbose: config.verbose,
+		});
 	}
 
 	throw new Error(`Unsupported AI provider "${config.provider}"`);
