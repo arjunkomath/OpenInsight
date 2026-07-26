@@ -237,23 +237,21 @@ async function runClaude({
 			);
 		}
 
-		let payload;
+		let output;
 		try {
-			payload = JSON.parse(stdout);
+			output = JSON.parse(stdout);
 		} catch {
 			throw new Error('Claude CLI returned invalid JSON');
 		}
-		payload = selectResultPayload(payload);
+
+		const payload = getResultEnvelope(output);
 		verboseLog(`Parsed result payload shape: ${describePayload(payload)}`);
 
-		const explicitError =
-			!payload ||
-			typeof payload !== 'object' ||
-			payload.is_error === true ||
-			(typeof payload.subtype === 'string' && payload.subtype !== 'success') ||
-			(payload.type !== undefined && payload.type !== 'result');
-
-		if (explicitError) {
+		if (
+			payload?.type !== 'result' ||
+			payload.subtype !== 'success' ||
+			payload.is_error !== false
+		) {
 			const detail = Array.isArray(payload?.errors)
 				? payload.errors.join('; ')
 				: payload?.result;
@@ -262,16 +260,16 @@ async function runClaude({
 			);
 		}
 
-		const sql = extractPayloadSQL(payload);
-		if (!sql) {
+		const sql = payload.structured_output?.sql;
+		if (typeof sql !== 'string' || !sql.trim()) {
 			throw new Error(
 				`Claude CLI returned no structured SQL (${describePayload(payload)})`,
 			);
 		}
 
 		log(`[AI Response] Model: ${model}`);
-		log(`[AI Response] Generated SQL: ${sql}`);
-		return {sql, error: null};
+		log(`[AI Response] Generated SQL: ${sql.trim()}`);
+		return {sql: sql.trim(), error: null};
 	} catch (error) {
 		if (isAbortError(error)) throw error;
 
@@ -293,55 +291,9 @@ function boundedMessage(value) {
 	return `${message.slice(0, MAX_ERROR_LENGTH)}…`;
 }
 
-function extractSQL(value) {
-	if (typeof value !== 'string') return null;
-	const text = value.trim();
-	if (!text) return null;
-
-	const fenced = text.match(/^```(?:sql)?\s*\n?([\s\S]*?)\n?```$/i);
-	return (fenced?.[1] || text).trim() || null;
-}
-
-function selectResultPayload(payload) {
-	if (!Array.isArray(payload)) return payload;
-
-	return (
-		payload.findLast(
-			item =>
-				item &&
-				typeof item === 'object' &&
-				(item.type === 'result' || 'structured_output' in item),
-		) || payload.at(-1)
-	);
-}
-
-function extractPayloadSQL(payload) {
-	const structuredOutput = parseJsonObject(payload?.structured_output);
-	const nestedResult = parseJsonObject(payload?.result);
-	const nestedStructuredOutput = parseJsonObject(
-		nestedResult?.structured_output,
-	);
-
-	return extractSQL(
-		structuredOutput?.sql ||
-			nestedStructuredOutput?.sql ||
-			nestedResult?.sql ||
-			payload?.result,
-	);
-}
-
-function parseJsonObject(value) {
-	if (value && typeof value === 'object' && !Array.isArray(value)) return value;
-	if (typeof value !== 'string') return null;
-
-	try {
-		const parsed = JSON.parse(value);
-		return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-			? parsed
-			: null;
-	} catch {
-		return null;
-	}
+function getResultEnvelope(output) {
+	if (!Array.isArray(output)) return output;
+	return output.findLast(item => item?.type === 'result');
 }
 
 function describePayload(payload) {
