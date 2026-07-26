@@ -13,65 +13,42 @@ import path from 'node:path';
 
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has('--dry-run');
-// npm cannot configure a trusted publisher for a package that does not exist,
-// so the platform packages are seeded once at 0.0.0 before OIDC takes over.
-const bootstrap = args.has('--bootstrap');
 const distDir = path.resolve(process.env.DIST_DIR ?? 'dist');
 const stageDir = path.resolve(
 	process.env.STAGE_DIR ?? path.join(distDir, 'npm'),
 );
 const tag = process.env.GITHUB_REF_NAME;
 
+// Adding a target here is not enough to publish it: npm cannot attach a trusted
+// publisher to a package that does not exist, so a new platform package has to
+// be published by hand once before CI can take it over.
 const targets = {
 	'darwin-arm64': {os: 'darwin', cpu: 'arm64'},
 	'linux-arm64': {os: 'linux', cpu: 'arm64'},
 	'linux-x64': {os: 'linux', cpu: 'x64'},
 };
 
-const source = JSON.parse(await readFile('package.json', 'utf8'));
-
-function releaseVersion() {
-	if (!tag) {
-		throw new Error('GITHUB_REF_NAME is required, for example v0.9.0');
-	}
-
-	if (!tag.startsWith('v')) {
-		throw new Error(
-			`GITHUB_REF_NAME must be a version tag starting with "v": ${tag}`,
-		);
-	}
-
-	const value = tag.slice(1);
-
-	if (source.version !== value) {
-		console.warn(
-			`package.json is at ${source.version} but the tag is ${tag}; publishing ${value}.`,
-		);
-	}
-
-	return value;
+if (!tag) {
+	throw new Error('GITHUB_REF_NAME is required, for example v0.9.0');
 }
 
-const version = bootstrap ? '0.0.0' : releaseVersion();
+if (!tag.startsWith('v')) {
+	throw new Error(
+		`GITHUB_REF_NAME must be a version tag starting with "v": ${tag}`,
+	);
+}
+
+const version = tag.slice(1);
+const source = JSON.parse(await readFile('package.json', 'utf8'));
+
+if (source.version !== version) {
+	console.warn(
+		`package.json is at ${source.version} but the tag is ${tag}; publishing ${version}.`,
+	);
+}
 
 function platformPackageName(target) {
 	return `openinsight-${target}`;
-}
-
-function platformManifest(target, extra) {
-	return {
-		name: platformPackageName(target),
-		version,
-		description: `${source.description} (${target} binary)`,
-		license: source.license,
-		author: source.author,
-		repository: source.repository,
-		homepage: source.homepage,
-		bugs: source.bugs,
-		os: [targets[target].os],
-		cpu: [targets[target].cpu],
-		...extra,
-	};
 }
 
 async function writeManifest(dir, manifest) {
@@ -89,21 +66,6 @@ async function isPublished(name) {
 	return result.exitCode === 0 && result.stdout.toString().trim() !== '';
 }
 
-async function stagePlaceholderPackage(target) {
-	const name = platformPackageName(target);
-	const dir = path.join(stageDir, name);
-
-	await rm(dir, {recursive: true, force: true});
-	await mkdir(dir, {recursive: true});
-	await writeFile(
-		path.join(dir, 'readme.md'),
-		`# ${name}\n\nPlaceholder that reserves this package so npm trusted publishing can be\nconfigured for it. The ${target} binary ships from the first real release.\nInstall [openinsight](https://www.npmjs.com/package/openinsight) instead.\n`,
-	);
-	await writeManifest(dir, platformManifest(target, {files: ['readme.md']}));
-
-	return {name, dir};
-}
-
 async function stagePlatformPackage(target) {
 	const archive = path.join(distDir, `openinsight-${target}.tar.gz`);
 	if (!existsSync(archive)) {
@@ -119,13 +81,20 @@ async function stagePlatformPackage(target) {
 	await $`tar -xzf ${archive} -C ${binDir}`;
 	await chmod(path.join(binDir, 'openinsight'), 0o755);
 
-	await writeManifest(
-		dir,
-		platformManifest(target, {
-			files: ['bin/openinsight'],
-			preferUnplugged: true,
-		}),
-	);
+	await writeManifest(dir, {
+		name,
+		version,
+		description: `${source.description} (${target} binary)`,
+		license: source.license,
+		author: source.author,
+		repository: source.repository,
+		homepage: source.homepage,
+		bugs: source.bugs,
+		os: [targets[target].os],
+		cpu: [targets[target].cpu],
+		files: ['bin/openinsight'],
+		preferUnplugged: true,
+	});
 
 	return {name, dir};
 }
@@ -177,11 +146,12 @@ async function publish({name, dir}) {
 	}
 }
 
-const stage = bootstrap ? stagePlaceholderPackage : stagePlatformPackage;
 const platformPackages = [];
 for (const target of Object.keys(targets)) {
-	platformPackages.push(await stage(target));
+	platformPackages.push(await stagePlatformPackage(target));
 }
+
+const mainPackage = await stageMainPackage();
 
 // Platform packages go first so the main package never resolves to
 // optional dependencies that are not on the registry yet.
@@ -189,6 +159,4 @@ for (const platformPackage of platformPackages) {
 	await publish(platformPackage);
 }
 
-if (!bootstrap) {
-	await publish(await stageMainPackage());
-}
+await publish(mainPackage);
