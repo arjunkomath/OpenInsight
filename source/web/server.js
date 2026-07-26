@@ -1,6 +1,9 @@
 import {join} from 'node:path';
 import process from 'node:process';
 import appJs from './client/app.js' with {type: 'text'};
+import faviconSvg from './client/favicon.svg' with {type: 'text'};
+import fontMedium from './client/fonts/IoskeleyMono-Medium.woff2' with {type: 'file'};
+import fontRegular from './client/fonts/IoskeleyMono-Regular.woff2' with {type: 'file'};
 import indexHtml from './client/index.html' with {type: 'text'};
 import stylesCss from './client/styles.css' with {type: 'text'};
 import {
@@ -31,6 +34,18 @@ const assets = {
 	'/index.html': {body: indexHtml, contentType: 'text/html; charset=utf-8'},
 	'/app.js': {body: appJs, contentType: 'text/javascript; charset=utf-8'},
 	'/styles.css': {body: stylesCss, contentType: 'text/css; charset=utf-8'},
+	'/favicon.svg': {
+		body: faviconSvg,
+		contentType: 'image/svg+xml; charset=utf-8',
+	},
+	'/fonts/IoskeleyMono-Regular.woff2': {
+		body: Bun.file(fontRegular),
+		contentType: 'font/woff2',
+	},
+	'/fonts/IoskeleyMono-Medium.woff2': {
+		body: Bun.file(fontMedium),
+		contentType: 'font/woff2',
+	},
 };
 
 const json = (body, status = 200) =>
@@ -212,7 +227,26 @@ const serveStatic = async url => {
 	});
 };
 
-export function startWebServer({host = '127.0.0.1', port = 5678} = {}) {
+const openInBrowser = url => {
+	const command =
+		process.platform === 'darwin'
+			? ['open', url]
+			: process.platform === 'win32'
+				? ['cmd', '/c', 'start', '', url]
+				: ['xdg-open', url];
+
+	try {
+		Bun.spawn(command, {stdout: 'ignore', stderr: 'ignore'}).unref();
+	} catch {
+		// Launching a browser is best effort; the URL is printed either way.
+	}
+};
+
+export function startWebServer({
+	host = '127.0.0.1',
+	port = 5678,
+	open = true,
+} = {}) {
 	const server = Bun.serve({
 		host,
 		port,
@@ -235,9 +269,16 @@ export function startWebServer({host = '127.0.0.1', port = 5678} = {}) {
 		console.warn('Warning: web mode is listening on all interfaces.');
 	}
 
-	console.log(
-		`OpenInsight web running at http://${server.hostname}:${server.port}`,
-	);
+	const reachableHost =
+		server.hostname === '0.0.0.0' || server.hostname === '::'
+			? 'localhost'
+			: server.hostname;
+	const url = `http://${reachableHost}:${server.port}`;
+
+	console.log(`OpenInsight web running at ${url}`);
 	console.log(`Config: ${join(process.cwd(), '.openinsight')}`);
+
+	if (open) openInBrowser(url);
+
 	return server;
 }

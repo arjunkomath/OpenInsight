@@ -7,6 +7,7 @@ export function parseCliArgs(args = Bun.argv.slice(2)) {
 			web: {type: 'boolean', default: false},
 			host: {type: 'string', default: '127.0.0.1'},
 			port: {type: 'string', default: '5678'},
+			open: {type: 'boolean', default: true},
 			help: {type: 'boolean', default: false},
 		},
 		strict: false,
@@ -17,6 +18,7 @@ export function parseCliArgs(args = Bun.argv.slice(2)) {
 		web: values.web === true,
 		host: typeof values.host === 'string' ? values.host : '127.0.0.1',
 		port: typeof values.port === 'string' ? Number(values.port) : 5678,
+		open: values.open === true && values['no-open'] !== true,
 		help: values.help === true,
 	};
 }
