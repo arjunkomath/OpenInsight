@@ -85,9 +85,7 @@ export async function generateQuery(
 	onLog,
 	abortSignal,
 ) {
-	const log = message => {
-		if (onLog) onLog(message);
-	};
+	const log = message => onLog?.(message);
 
 	if (!openRouterKey) {
 		return {
@@ -146,9 +144,7 @@ export async function executeQuery(
 	onLog,
 	abortSignal,
 ) {
-	const log = message => {
-		if (onLog) onLog(message);
-	};
+	const log = message => onLog?.(message);
 
 	if (!isReadOnlyQuery(sqlQuery)) {
 		return {
@@ -234,6 +230,9 @@ export async function executeQuery(
 	return {error: 'Unexpected error', sql: currentSql, data: null};
 }
 
+const MUTATION_KEYWORD_RE =
+	/\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|REPLACE|GRANT|REVOKE|EXEC|EXECUTE|CALL|PRAGMA|ATTACH|DETACH|VACUUM)\b/i;
+
 function isReadOnlyQuery(sql) {
 	const normalized = sql.toUpperCase().replace(/\s+/g, ' ').trim();
 
@@ -242,30 +241,7 @@ function isReadOnlyQuery(sql) {
 		if (parts.length > 1) return false;
 	}
 
-	const dangerousKeywords = [
-		'INSERT',
-		'UPDATE',
-		'DELETE',
-		'DROP',
-		'ALTER',
-		'CREATE',
-		'TRUNCATE',
-		'REPLACE',
-		'GRANT',
-		'REVOKE',
-		'EXEC',
-		'EXECUTE',
-		'CALL',
-		'PRAGMA',
-		'ATTACH',
-		'DETACH',
-		'VACUUM',
-	];
-
-	for (const keyword of dangerousKeywords) {
-		const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-		if (regex.test(sql)) return false;
-	}
+	if (MUTATION_KEYWORD_RE.test(sql)) return false;
 
 	return normalized.startsWith('SELECT') || normalized.startsWith('WITH');
 }

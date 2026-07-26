@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
-import meow from 'meow';
+import {parseCliArgs} from './utils/cli-args.js';
 
-const cli = meow(
-	`
+const helpText = `
 		Usage
 		  $ openinsight
 		  $ openinsight --web
@@ -16,30 +15,18 @@ const cli = meow(
 		Examples
 		  $ OPENROUTER_KEY=your-key openinsight
 		  $ OPENROUTER_KEY=your-key openinsight --web
-	`,
-	{
-		importMeta: import.meta,
-		autoVersion: false,
-		flags: {
-			web: {
-				type: 'boolean',
-				default: false,
-			},
-			host: {
-				type: 'string',
-				default: '127.0.0.1',
-			},
-			port: {
-				type: 'number',
-				default: 5678,
-			},
-		},
-	},
-);
+	`;
 
-if (cli.flags.web) {
+const flags = parseCliArgs();
+
+if (flags.help) {
+	console.log(helpText);
+	process.exit(0);
+}
+
+if (flags.web) {
 	const {startWebServer} = await import('./web/server.js');
-	startWebServer({host: cli.flags.host, port: cli.flags.port});
+	startWebServer({host: flags.host, port: flags.port});
 	await new Promise(() => {});
 }
 

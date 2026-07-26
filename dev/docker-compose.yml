@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -17,12 +15,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - openinsight
-
-networks:
-  openinsight:
-    driver: bridge
 
 volumes:
   postgres_data:

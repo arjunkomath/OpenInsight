@@ -3,10 +3,10 @@ import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useKeyboard, useTerminalDimensions} from '@opentui/react';
 import {TextAttributes} from '@opentui/core';
 import Spinner from './Spinner.js';
-import {theme, resolveColor} from '../theme.js';
+import {theme} from '../theme.js';
 import {
-	getVisibleLineWindow,
-	renderTranscriptLines,
+	formatTable,
+	getScrollWindow,
 	truncateStatus,
 } from '../utils/transcript.js';
 import {getQueryCtrlCAction} from '../utils/query-quit.js';
@@ -18,32 +18,120 @@ import {
 const BOLD = TextAttributes.BOLD;
 const DIM = TextAttributes.DIM;
 
-function segmentAttributes(segment) {
-	let attrs = 0;
-	if (segment.bold) attrs |= BOLD;
-	if (segment.dimColor) attrs |= DIM;
-	return attrs;
+function cellValue(value) {
+	if (value === null || value === undefined) return '';
+	if (typeof value === 'object') return JSON.stringify(value);
+	return String(value);
 }
 
-function segmentColor(segment) {
-	if (segment.color) return resolveColor(segment.color);
-	return theme.default;
+function prepareTableData(data, maxRows) {
+	if (!data || data.length === 0) return null;
+
+	const columns = Object.keys(data[0]);
+	return data.slice(0, maxRows).map(row => {
+		const next = {};
+		for (const column of columns) {
+			next[column] = cellValue(row[column]);
+		}
+
+		return next;
+	});
 }
 
-function TranscriptLine({line}) {
-	return (
-		<text>
-			{line.segments.map((segment, index) => (
-				<span
-					key={index}
-					fg={segmentColor(segment)}
-					attributes={segmentAttributes(segment)}
-				>
-					{segment.text}
-				</span>
-			))}
-		</text>
-	);
+function MessageView({message, tableWidth}) {
+	if (message.role === 'user') {
+		return (
+			<text fg={theme.cyan} attributes={BOLD} wrapMode="char">
+				› {message.content}
+			</text>
+		);
+	}
+
+	if (message.role === 'log') {
+		return (
+			<text fg={theme.gray} wrapMode="char">
+				│ {message.content}
+			</text>
+		);
+	}
+
+	if (message.role === 'error') {
+		return (
+			<text fg={theme.red} wrapMode="char">
+				✗ {message.content}
+			</text>
+		);
+	}
+
+	if (message.role === 'system') {
+		return (
+			<text fg={theme.yellow} wrapMode="char">
+				{message.content}
+			</text>
+		);
+	}
+
+	if (message.role === 'confirm') {
+		return (
+			<box
+				style={{
+					borderStyle: 'rounded',
+					borderColor: theme.green,
+					paddingX: 1,
+					flexDirection: 'column',
+				}}
+			>
+				<text fg={theme.white} wrapMode="char">
+					{message.content}
+				</text>
+				<text fg={theme.yellow} attributes={BOLD}>
+					Execute?
+				</text>
+				<text fg={theme.default} attributes={DIM}>
+					Press Y to run, N to cancel
+				</text>
+			</box>
+		);
+	}
+
+	if (message.role === 'assistant') {
+		const table =
+			message.data && message.data.length > 0
+				? formatTable(message.data, Math.max(tableWidth - 4, 1))
+				: '';
+
+		return (
+			<box
+				style={{
+					borderStyle: 'rounded',
+					borderColor: theme.gray,
+					paddingX: 1,
+					flexDirection: 'column',
+				}}
+			>
+				<text fg={theme.gray} attributes={DIM} wrapMode="char">
+					{message.content}
+				</text>
+				{table ? (
+					<text fg={theme.default} wrapMode="char">
+						{table}
+					</text>
+				) : null}
+				{message.resultCount === 0 ? (
+					<text fg={theme.default} attributes={DIM}>
+						No results
+					</text>
+				) : null}
+				{message.moreRows > 0 ? (
+					<text fg={theme.default} attributes={DIM}>
+						({message.moreRows} more rows)
+					</text>
+				) : null}
+			</box>
+		);
+	}
+
+	return null;
 }
 
 export default function QueryInterface({
@@ -85,7 +173,7 @@ export default function QueryInterface({
 	const [activeOperation, setActiveOperation] = useState(null);
 	const [isCancelling, setIsCancelling] = useState(false);
 	const [scrollTop, setScrollTop] = useState(0);
-	const [autoFollow, setAutoFollow] = useState(true);
+	const [contentHeight, setContentHeight] = useState(0);
 	const [selectedSlashCommandIndex, setSelectedSlashCommandIndex] = useState(0);
 	const [pendingQuery, setPendingQuery] = useState(null);
 	const [pendingSourceDeletion, setPendingSourceDeletion] = useState(null);
@@ -94,10 +182,7 @@ export default function QueryInterface({
 		useState(false);
 	const {width: terminalWidth, height: terminalHeight} =
 		useTerminalDimensions();
-	const previousMetricsRef = useRef({
-		lineCount: 0,
-		transcriptHeight: 0,
-	});
+	const scrollboxRef = useRef(null);
 	const activeRequestRef = useRef(null);
 
 	const MAX_MESSAGES = 100;
@@ -148,6 +233,19 @@ export default function QueryInterface({
 		setInputKey(k => k + 1);
 	};
 
+	const scrollToBottom = () => {
+		const node = scrollboxRef.current;
+		if (!node) return;
+		const height = node.scrollHeight ?? 0;
+		node.scrollTo(Math.max(height - transcriptHeight, 0));
+	};
+
+	const resetPromptInteraction = () => {
+		clearInput();
+		scrollToBottom();
+		setAwaitingQuitConfirmation(false);
+	};
+
 	const completeSelectedSlashCommand = () => {
 		if (!selectedSlashCommand) return false;
 
@@ -158,16 +256,8 @@ export default function QueryInterface({
 
 		setInput(nextInput);
 		setInputKey(k => k + 1);
-		resetQuitConfirmation();
-		return true;
-	};
-
-	const pinToBottom = () => {
-		setAutoFollow(true);
-	};
-
-	const resetQuitConfirmation = () => {
 		setAwaitingQuitConfirmation(false);
+		return true;
 	};
 
 	const beginProcessing = operation => {
@@ -201,16 +291,14 @@ export default function QueryInterface({
 			return false;
 		}
 
-		pinToBottom();
+		scrollToBottom();
 		setIsCancelling(true);
 		activeRequest.controller.abort();
 		return true;
 	};
 
 	const executeConfirmedQuery = async () => {
-		clearInput();
-		pinToBottom();
-		resetQuitConfirmation();
+		resetPromptInteraction();
 		const {sql} = pendingQuery;
 		setPendingQuery(null);
 		const controller = beginProcessing('execution');
@@ -242,9 +330,7 @@ export default function QueryInterface({
 	};
 
 	const cancelPendingQuery = () => {
-		clearInput();
-		pinToBottom();
-		resetQuitConfirmation();
+		resetPromptInteraction();
 		addMessage({role: 'system', content: 'Query cancelled'});
 		setPendingQuery(null);
 	};
@@ -254,9 +340,7 @@ export default function QueryInterface({
 
 		const deletedSource = pendingSourceDeletion;
 		setPendingSourceDeletion(null);
-		clearInput();
-		pinToBottom();
-		resetQuitConfirmation();
+		resetPromptInteraction();
 
 		const result = onDeleteSource(deletedSource.id);
 		addMessage(
@@ -270,87 +354,27 @@ export default function QueryInterface({
 	};
 
 	const cancelSourceDeletion = () => {
-		clearInput();
-		pinToBottom();
-		resetQuitConfirmation();
+		resetPromptInteraction();
 		addMessage({role: 'system', content: 'Source deletion cancelled'});
 		setPendingSourceDeletion(null);
 	};
 
 	const maxTableRows = Math.max(Math.floor((transcriptHeight - 8) / 2), 3);
 
-	const prepareTableData = data => {
-		if (!data || data.length === 0) return null;
-
-		const rows = data.slice(0, maxTableRows);
-		const columns = Object.keys(data[0]);
-
-		return rows.map(row => {
-			const newRow = {};
-			for (const col of columns) {
-				const value = row[col];
-
-				if (value === null || value === undefined) {
-					newRow[col] = '';
-				} else if (typeof value === 'object') {
-					newRow[col] = JSON.stringify(value);
-				} else {
-					newRow[col] = String(value);
-				}
-			}
-
-			return newRow;
-		});
-	};
-
-	const displayMessages = messages.map(message =>
-		message.role === 'assistant' && message.data
-			? {
-					...message,
-					data: prepareTableData(message.data),
-					resultCount: message.data.length,
-					moreRows: Math.max(message.data.length - maxTableRows, 0),
-				}
-			: message,
+	const displayMessages = useMemo(
+		() =>
+			messages.map(message =>
+				message.role === 'assistant' && message.data
+					? {
+							...message,
+							data: prepareTableData(message.data, maxTableRows),
+							resultCount: message.data.length,
+							moreRows: Math.max(message.data.length - maxTableRows, 0),
+						}
+					: message,
+			),
+		[messages, maxTableRows],
 	);
-
-	const transcriptLines = useMemo(
-		() => renderTranscriptLines(displayMessages, {width: transcriptWidth}),
-		[displayMessages, transcriptWidth],
-	);
-
-	const {
-		maxScrollTop,
-		visibleLines,
-		scrollTop: resolvedScrollTop,
-	} = useMemo(
-		() => getVisibleLineWindow(transcriptLines, scrollTop, transcriptHeight),
-		[transcriptHeight, transcriptLines, scrollTop],
-	);
-
-	useEffect(() => {
-		setScrollTop(current => {
-			const previousLineCount = previousMetricsRef.current.lineCount;
-			const previousHeight =
-				previousMetricsRef.current.transcriptHeight || transcriptHeight;
-			const previousMaxScrollTop = Math.max(
-				previousLineCount - previousHeight,
-				0,
-			);
-			const wasAtBottom = current >= previousMaxScrollTop;
-			const nextScrollTop =
-				autoFollow || wasAtBottom
-					? maxScrollTop
-					: Math.min(current, maxScrollTop);
-
-			previousMetricsRef.current = {
-				lineCount: transcriptLines.length,
-				transcriptHeight,
-			};
-
-			return nextScrollTop;
-		});
-	}, [autoFollow, maxScrollTop, transcriptHeight, transcriptLines.length]);
 
 	useEffect(() => {
 		setSelectedSlashCommandIndex(0);
@@ -363,21 +387,31 @@ export default function QueryInterface({
 		});
 	}, [showSlashCommandSuggestions, slashCommandSuggestions.length]);
 
+	useEffect(() => {
+		const node = scrollboxRef.current;
+		if (!node) return;
+
+		const syncScroll = () => {
+			setScrollTop(node.scrollTop ?? 0);
+			setContentHeight(node.scrollHeight ?? 0);
+		};
+
+		syncScroll();
+		const timer = setInterval(syncScroll, 100);
+		return () => clearInterval(timer);
+	}, [displayMessages, transcriptHeight]);
+
+	const {
+		maxScrollTop,
+		scrollTop: resolvedScrollTop,
+		visibleStart,
+		visibleEnd,
+	} = getScrollWindow(scrollTop, transcriptHeight, contentHeight);
+
 	const updateScrollTop = nextScrollTop => {
 		const clamped = Math.max(0, Math.min(nextScrollTop, maxScrollTop));
+		scrollboxRef.current?.scrollTo?.(clamped);
 		setScrollTop(clamped);
-		setAutoFollow(clamped >= maxScrollTop);
-	};
-
-	const handleMouseScroll = event => {
-		const scroll = event.scroll;
-		if (!scroll) return;
-		const step = Math.max(1, scroll.delta || 1) * 3;
-		if (scroll.direction === 'up') {
-			updateScrollTop(resolvedScrollTop - step);
-		} else if (scroll.direction === 'down') {
-			updateScrollTop(resolvedScrollTop + step);
-		}
 	};
 
 	useKeyboard(key => {
@@ -401,11 +435,11 @@ export default function QueryInterface({
 
 			if (ctrlCAction === 'clear-input') {
 				clearInput();
-				resetQuitConfirmation();
+				setAwaitingQuitConfirmation(false);
 				return;
 			}
 
-			pinToBottom();
+			scrollToBottom();
 			setAwaitingQuitConfirmation(true);
 			return;
 		}
@@ -438,7 +472,7 @@ export default function QueryInterface({
 		}
 
 		if (awaitingQuitConfirmation) {
-			resetQuitConfirmation();
+			setAwaitingQuitConfirmation(false);
 		}
 
 		if (pendingSourceDeletion && !isProcessing) {
@@ -496,15 +530,14 @@ export default function QueryInterface({
 	});
 
 	const handleSubmit = async query => {
-		resetQuitConfirmation();
+		setAwaitingQuitConfirmation(false);
 
 		if (!query.trim() || isProcessing) return;
 
 		if (pendingQuery || pendingSourceDeletion) return;
 
 		addMessage({role: 'user', content: query});
-		clearInput();
-		pinToBottom();
+		resetPromptInteraction();
 
 		if (query.trimStart().startsWith('/')) {
 			handleCommand(query.trim());
@@ -556,6 +589,33 @@ export default function QueryInterface({
 		addMessage({role: 'confirm', content: result.sql});
 	};
 
+	const resolveNumberedItem = (parts, items, {usage, emptyMessage, kind}) => {
+		if (parts.length === 1) {
+			if (emptyMessage !== undefined) {
+				if (items.length === 0) {
+					addMessage({role: 'system', content: emptyMessage});
+					return {ok: false};
+				}
+
+				return {ok: true, listOnly: true, items};
+			}
+
+			addMessage({role: 'error', content: usage});
+			return {ok: false};
+		}
+
+		const index = Number.parseInt(parts[1], 10) - 1;
+		if (index >= 0 && index < items.length) {
+			return {ok: true, item: items[index], index};
+		}
+
+		addMessage({
+			role: 'error',
+			content: `Invalid ${kind} number. Use 1-${items.length}`,
+		});
+		return {ok: false};
+	};
+
 	const handleCommand = command => {
 		switch (true) {
 			case command === '/help': {
@@ -593,17 +653,15 @@ export default function QueryInterface({
 			case command.startsWith('/presets'): {
 				const parts = command.split(' ');
 				const presets = onLoadPresets();
-				if (parts.length === 1) {
-					if (presets.length === 0) {
-						addMessage({
-							role: 'system',
-							content:
-								'No presets saved. Use /save <name> after running a query.',
-						});
-						return;
-					}
+				const resolved = resolveNumberedItem(parts, presets, {
+					kind: 'preset',
+					emptyMessage:
+						'No presets saved. Use /save <name> after running a query.',
+				});
+				if (!resolved.ok) return;
 
-					const list = presets
+				if (resolved.listOnly) {
+					const list = resolved.items
 						.map((preset, index) => `${index + 1}. ${preset.name}`)
 						.join('\n');
 					addMessage({
@@ -613,18 +671,8 @@ export default function QueryInterface({
 					return;
 				}
 
-				const index = Number.parseInt(parts[1], 10) - 1;
-				if (index >= 0 && index < presets.length) {
-					const preset = presets[index];
-					setPendingQuery({sql: preset.sql, query: preset.name});
-					addMessage({role: 'confirm', content: preset.sql});
-					return;
-				}
-
-				addMessage({
-					role: 'error',
-					content: `Invalid preset number. Use 1-${presets.length}`,
-				});
+				setPendingQuery({sql: resolved.item.sql, query: resolved.item.name});
+				addMessage({role: 'confirm', content: resolved.item.sql});
 				return;
 			}
 
@@ -632,27 +680,21 @@ export default function QueryInterface({
 				command.startsWith('/delete-preset '): {
 				const parts = command.split(' ');
 				const presets = onLoadPresets();
-				if (parts.length === 1) {
-					addMessage({role: 'error', content: 'Usage: /delete-preset <n>'});
-					return;
-				}
-
-				const index = Number.parseInt(parts[1], 10) - 1;
-				if (index >= 0 && index < presets.length) {
-					const preset = presets[index];
-					const result = onDeletePreset(preset.id);
-					addMessage(
-						result
-							? {role: 'system', content: `Preset "${preset.name}" deleted`}
-							: {role: 'error', content: 'Failed to delete preset'},
-					);
-					return;
-				}
-
-				addMessage({
-					role: 'error',
-					content: `Invalid preset number. Use 1-${presets.length}`,
+				const resolved = resolveNumberedItem(parts, presets, {
+					kind: 'preset',
+					usage: 'Usage: /delete-preset <n>',
 				});
+				if (!resolved.ok) return;
+
+				const result = onDeletePreset(resolved.item.id);
+				addMessage(
+					result
+						? {
+								role: 'system',
+								content: `Preset "${resolved.item.name}" deleted`,
+							}
+						: {role: 'error', content: 'Failed to delete preset'},
+				);
 				return;
 			}
 
@@ -664,20 +706,16 @@ export default function QueryInterface({
 					return;
 				}
 
-				const index = Number.parseInt(parts[1], 10) - 1;
-				if (index >= 0 && index < sources.length) {
-					const sourceToDelete = sources[index];
-					setPendingSourceDeletion(sourceToDelete);
-					addMessage({
-						role: 'system',
-						content: `Delete source "${sourceToDelete.name}" (${sourceToDelete.type})? Press Y to confirm, N to cancel`,
-					});
-					return;
-				}
+				const resolved = resolveNumberedItem(parts, sources, {
+					kind: 'source',
+					usage: 'Usage: /delete-source <n>',
+				});
+				if (!resolved.ok) return;
 
+				setPendingSourceDeletion(resolved.item);
 				addMessage({
-					role: 'error',
-					content: `Invalid source number. Use 1-${sources.length}`,
+					role: 'system',
+					content: `Delete source "${resolved.item.name}" (${resolved.item.type})? Press Y to confirm, N to cancel`,
 				});
 				return;
 			}
@@ -697,16 +735,11 @@ export default function QueryInterface({
 					return;
 				}
 
-				const index = Number.parseInt(parts[1], 10) - 1;
-				if (index >= 0 && index < sources.length) {
-					onSwitchSource(sources[index]);
-					return;
-				}
-
-				addMessage({
-					role: 'error',
-					content: `Invalid source number. Use 1-${sources.length}`,
+				const resolved = resolveNumberedItem(parts, sources, {
+					kind: 'source',
 				});
+				if (!resolved.ok) return;
+				onSwitchSource(resolved.item);
 				return;
 			}
 
@@ -757,12 +790,6 @@ export default function QueryInterface({
 
 	const hiddenAbove = resolvedScrollTop;
 	const hiddenBelow = Math.max(maxScrollTop - resolvedScrollTop, 0);
-	const visibleRangeStart =
-		transcriptLines.length === 0 ? 0 : resolvedScrollTop + 1;
-	const visibleRangeEnd = Math.min(
-		resolvedScrollTop + transcriptHeight,
-		transcriptLines.length,
-	);
 	const statusWidth = Math.max(terminalWidth - 4, 20);
 	const statusText = awaitingQuitConfirmation
 		? truncateStatus(
@@ -773,7 +800,7 @@ export default function QueryInterface({
 			? truncateStatus('Tab complete • Ctrl+N/Ctrl+P select', statusWidth)
 			: truncateStatus(
 					[
-						`Lines ${visibleRangeStart}-${visibleRangeEnd} of ${transcriptLines.length}`,
+						`Lines ${visibleStart}-${visibleEnd} of ${contentHeight}`,
 						hiddenAbove > 0 ? `${hiddenAbove} above` : 'top',
 						hiddenBelow > 0 ? `${hiddenBelow} below` : 'following',
 						'↑↓ scroll',
@@ -835,18 +862,36 @@ export default function QueryInterface({
 				{!hasApiKey && <text fg={theme.red}> [No API Key]</text>}
 			</box>
 
-			<box
+			<scrollbox
+				ref={scrollboxRef}
+				stickyScroll
+				stickyStart="bottom"
+				scrollX={false}
 				style={{
-					flexDirection: 'column',
 					height: transcriptHeight,
 					paddingX: 2,
+					flexGrow: 0,
+					flexShrink: 0,
 				}}
-				onMouseScroll={handleMouseScroll}
 			>
-				{visibleLines.map((line, index) => (
-					<TranscriptLine key={`${line.key}-${index}`} line={line} />
-				))}
-			</box>
+				{displayMessages.length === 0 ? (
+					<text fg={theme.default} attributes={DIM}>
+						No messages yet.
+					</text>
+				) : (
+					displayMessages.map((message, index) => (
+						<box
+							key={index}
+							style={{
+								flexDirection: 'column',
+								marginBottom: message.role === 'log' ? 0 : 1,
+							}}
+						>
+							<MessageView message={message} tableWidth={transcriptWidth} />
+						</box>
+					))
+				)}
+			</scrollbox>
 
 			<box style={{paddingX: 2, paddingTop: 1, flexShrink: 0, height: 1}}>
 				{isProcessing ? (
@@ -883,7 +928,7 @@ export default function QueryInterface({
 						value={input}
 						onInput={value => {
 							if (pendingQuery || pendingSourceDeletion) return;
-							resetQuitConfirmation();
+							setAwaitingQuitConfirmation(false);
 							setInput(value);
 						}}
 						onSubmit={handleSubmit}
