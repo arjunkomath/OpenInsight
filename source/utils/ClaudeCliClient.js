@@ -220,11 +220,14 @@ async function runClaude({
 			throw new Error('Claude CLI returned invalid JSON');
 		}
 
-		if (
-			payload?.type !== 'result' ||
-			payload.subtype !== 'success' ||
-			payload.is_error !== false
-		) {
+		const explicitError =
+			!payload ||
+			typeof payload !== 'object' ||
+			payload.is_error === true ||
+			(typeof payload.subtype === 'string' && payload.subtype !== 'success') ||
+			(payload.type !== undefined && payload.type !== 'result');
+
+		if (explicitError) {
 			const detail = Array.isArray(payload?.errors)
 				? payload.errors.join('; ')
 				: payload?.result;
@@ -233,14 +236,14 @@ async function runClaude({
 			);
 		}
 
-		const sql = payload.structured_output?.sql;
-		if (typeof sql !== 'string' || !sql.trim()) {
+		const sql = extractSQL(payload.structured_output?.sql || payload.result);
+		if (!sql) {
 			throw new Error('Claude CLI returned no structured SQL');
 		}
 
 		log(`[AI Response] Model: ${model}`);
-		log(`[AI Response] Generated SQL: ${sql.trim()}`);
-		return {sql: sql.trim(), error: null};
+		log(`[AI Response] Generated SQL: ${sql}`);
+		return {sql, error: null};
 	} catch (error) {
 		if (isAbortError(error)) throw error;
 
@@ -256,4 +259,13 @@ function boundedMessage(value) {
 	const message = String(value || '').trim();
 	if (message.length <= MAX_ERROR_LENGTH) return message;
 	return `${message.slice(0, MAX_ERROR_LENGTH)}…`;
+}
+
+function extractSQL(value) {
+	if (typeof value !== 'string') return null;
+	const text = value.trim();
+	if (!text) return null;
+
+	const fenced = text.match(/^```(?:sql)?\s*\n?([\s\S]*?)\n?```$/i);
+	return (fenced?.[1] || text).trim() || null;
 }

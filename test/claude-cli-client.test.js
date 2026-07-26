@@ -54,6 +54,23 @@ test('Claude client runs an isolated structured-output request via stdin', async
 	expect(stdin).toContain('database_schema');
 });
 
+test('Claude client accepts projected result envelopes without discriminators', async () => {
+	const client = createClaudeCliClient('/claude', 'opus', null, {
+		spawn: () =>
+			fakeChild(
+				jsonResponse({
+					session_id: 'session',
+					structured_output: {sql: 'SELECT 1 LIMIT 1000'},
+				}),
+			),
+	});
+
+	expect(await client.generateSQL('q', {}, [])).toEqual({
+		sql: 'SELECT 1 LIMIT 1000',
+		error: null,
+	});
+});
+
 test('Claude client rejects error envelopes and malformed output', async () => {
 	const errorClient = createClaudeCliClient('/claude', 'opus', null, {
 		spawn: () =>
@@ -101,7 +118,7 @@ test('Claude client rejects successful output without structured SQL', async () 
 					type: 'result',
 					subtype: 'success',
 					is_error: false,
-					result: 'SELECT 1',
+					result: '',
 				}),
 			),
 	});
@@ -109,6 +126,25 @@ test('Claude client rejects successful output without structured SQL', async () 
 	expect((await client.generateSQL('q', {}, [])).error).toContain(
 		'no structured SQL',
 	);
+});
+
+test('Claude client falls back to SQL in the text result', async () => {
+	const client = createClaudeCliClient('/claude', 'opus', null, {
+		spawn: () =>
+			fakeChild(
+				jsonResponse({
+					type: 'result',
+					subtype: 'success',
+					is_error: false,
+					result: '```sql\nSELECT 1 LIMIT 1000\n```',
+				}),
+			),
+	});
+
+	expect(await client.generateSQL('q', {}, [])).toEqual({
+		sql: 'SELECT 1 LIMIT 1000',
+		error: null,
+	});
 });
 
 test('Claude client includes bounded stderr for a nonzero exit', async () => {
