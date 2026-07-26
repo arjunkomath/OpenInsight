@@ -573,12 +573,18 @@ label,
 	width: min(100%, 1400px);
 }
 
+/* The workspace scrolls, so its children must keep their content height
+   instead of shrinking and overlapping whatever follows them. */
+.workspace > * {
+	flex: none;
+	min-width: 0;
+}
+
 .panel {
 	border: 1px solid var(--border);
 	border-radius: var(--radius-lg);
 	background: var(--surface);
 	padding: 1rem;
-	flex: none;
 }
 
 .panel-head {
