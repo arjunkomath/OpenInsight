@@ -293,6 +293,9 @@ label,
 .body {
 	display: grid;
 	grid-template-columns: var(--rail-width) minmax(0, 1fr);
+	/* An implicit auto row would grow past the viewport and take the sidebar
+	   and workspace with it, leaving nothing able to scroll. */
+	grid-template-rows: minmax(0, 1fr);
 	min-height: 0;
 }
 
@@ -570,7 +573,7 @@ label,
 	display: flex;
 	flex-direction: column;
 	gap: 1rem;
-	width: min(100%, 1400px);
+	width: 100%;
 }
 
 /* The workspace scrolls, so its children must keep their content height
@@ -578,6 +581,15 @@ label,
 .workspace > * {
 	flex: none;
 	min-width: 0;
+}
+
+/* Results run the full width; text you read or type stays measured. */
+.composer,
+.sql-panel,
+.onboarding,
+.notice,
+.error {
+	max-width: 1400px;
 }
 
 .panel {
@@ -929,6 +941,7 @@ dialog::backdrop {
 
 	.body {
 		grid-template-columns: 1fr;
+		grid-template-rows: auto;
 	}
 
 	.sidebar {
