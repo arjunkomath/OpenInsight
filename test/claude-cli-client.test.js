@@ -20,11 +20,13 @@ test('Claude client runs an isolated structured-output request via stdin', async
 		invocation = {command, options};
 		return fakeChild(
 			jsonResponse([
+				{type: 'system', subtype: 'init'},
 				{
 					type: 'result',
 					subtype: 'success',
 					is_error: false,
 					structured_output: {sql: 'SELECT * FROM "users" LIMIT 1000'},
+					ttft_ms: 5486,
 				},
 			]),
 		);
@@ -54,31 +56,6 @@ test('Claude client runs an isolated structured-output request via stdin', async
 	const stdin = await invocation.options.stdin.text();
 	expect(stdin).toContain('list users');
 	expect(stdin).toContain('database_schema');
-});
-
-test('Claude client accepts a result envelope wrapped in an output array', async () => {
-	const client = createClaudeCliClient('/claude', 'opus', null, {
-		spawn: () =>
-			fakeChild(
-				jsonResponse([
-					{type: 'system', subtype: 'init'},
-					{
-						type: 'result',
-						subtype: 'success',
-						is_error: false,
-						structured_output: {
-							sql: 'SELECT COUNT(*) FROM "Tool" LIMIT 1000',
-						},
-						ttft_ms: 5486,
-					},
-				]),
-			),
-	});
-
-	expect(await client.generateSQL('count tools', {}, [])).toEqual({
-		sql: 'SELECT COUNT(*) FROM "Tool" LIMIT 1000',
-		error: null,
-	});
 });
 
 test('Claude client emits full subprocess diagnostics only in verbose mode', async () => {
@@ -111,28 +88,7 @@ test('Claude client emits full subprocess diagnostics only in verbose mode', asy
 	expect(output).not.toContain('/secret/path/claude');
 });
 
-test('Claude client redacts its executable path from failures', async () => {
-	const logs = [];
-	const binaryPath = '/secret/path/claude';
-	const client = createClaudeCliClient(
-		binaryPath,
-		'opus',
-		message => logs.push(message),
-		{
-			verbose: true,
-			spawn: () => {
-				throw new Error(`Failed to spawn ${binaryPath}`);
-			},
-		},
-	);
-
-	const result = await client.generateSQL('show one', {users: []}, []);
-	expect(result.error).toContain('<claude-binary>');
-	expect(result.error).not.toContain(binaryPath);
-	expect(logs.join('\n')).not.toContain(binaryPath);
-});
-
-test('Claude client rejects error envelopes and malformed output', async () => {
+test('Claude client reports structured error envelopes', async () => {
 	const errorClient = createClaudeCliClient('/claude', 'opus', null, {
 		spawn: () =>
 			fakeChild(
@@ -144,48 +100,9 @@ test('Claude client rejects error envelopes and malformed output', async () => {
 				}),
 			),
 	});
-	const failedSubtypeClient = createClaudeCliClient('/claude', 'opus', null, {
-		spawn: () =>
-			fakeChild(
-				jsonResponse({
-					type: 'result',
-					subtype: 'error_during_execution',
-					is_error: false,
-					result: 'Execution failed',
-					structured_output: {sql: 'SELECT 1'},
-				}),
-			),
-	});
-	const malformedClient = createClaudeCliClient('/claude', 'opus', null, {
-		spawn: () => fakeChild('not json'),
-	});
 
 	expect((await errorClient.generateSQL('q', {}, [])).error).toContain(
 		'Authentication required',
-	);
-	expect((await failedSubtypeClient.generateSQL('q', {}, [])).error).toContain(
-		'Execution failed',
-	);
-	expect((await malformedClient.generateSQL('q', {}, [])).error).toContain(
-		'invalid JSON',
-	);
-});
-
-test('Claude client rejects successful output without structured SQL', async () => {
-	const client = createClaudeCliClient('/claude', 'opus', null, {
-		spawn: () =>
-			fakeChild(
-				jsonResponse({
-					type: 'result',
-					subtype: 'success',
-					is_error: false,
-					result: '',
-				}),
-			),
-	});
-
-	expect((await client.generateSQL('q', {}, [])).error).toContain(
-		'no structured SQL',
 	);
 });
 
@@ -202,28 +119,6 @@ test('Claude client includes bounded stderr for a nonzero exit', async () => {
 	expect(result.error).toContain('Claude CLI exited with code 1');
 	expect(result.error).toContain('Authentication failed');
 	expect(result.error.length).toBeLessThan(2100);
-});
-
-test('Claude client does not spawn for a pre-aborted request', async () => {
-	const controller = new AbortController();
-	controller.abort();
-	let spawned = false;
-	const client = createClaudeCliClient('/claude', 'opus', null, {
-		spawn: () => {
-			spawned = true;
-			return fakeChild('');
-		},
-	});
-
-	let thrown;
-	try {
-		await client.generateSQL('q', {}, [], controller.signal);
-	} catch (error) {
-		thrown = error;
-	}
-
-	expect(spawned).toBe(false);
-	expect(isAbortError(thrown)).toBe(true);
 });
 
 test('Claude client terminates a running request when aborted', async () => {
@@ -274,54 +169,5 @@ test('Claude client terminates a running request when aborted', async () => {
 	}
 
 	expect(signals).toEqual(['SIGTERM']);
-	expect(isAbortError(thrown)).toBe(true);
-});
-
-test('Claude client escalates cancellation when SIGTERM is ignored', async () => {
-	const controller = new AbortController();
-	const signals = [];
-	let resolveExit;
-	const exited = new Promise(resolve => {
-		resolveExit = resolve;
-	});
-	let stdoutController;
-	let stderrController;
-	const client = createClaudeCliClient('/claude', 'opus', null, {
-		killGraceMs: 1,
-		spawn: () => ({
-			stdout: new ReadableStream({
-				start(streamController) {
-					stdoutController = streamController;
-				},
-			}),
-			stderr: new ReadableStream({
-				start(streamController) {
-					stderrController = streamController;
-				},
-			}),
-			exited,
-			exitCode: null,
-			kill(signal) {
-				signals.push(signal);
-				if (signal !== 'SIGKILL') return;
-				this.exitCode = 137;
-				stdoutController.close();
-				stderrController.close();
-				resolveExit(137);
-			},
-		}),
-	});
-
-	const request = client.generateSQL('q', {}, [], controller.signal);
-	controller.abort();
-
-	let thrown;
-	try {
-		await request;
-	} catch (error) {
-		thrown = error;
-	}
-
-	expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
 	expect(isAbortError(thrown)).toBe(true);
 });

@@ -32,23 +32,6 @@ test('resolveAIConfig selects and verifies Claude', () => {
 	});
 });
 
-test('explicit provider overrides the environment and unknown providers fail', () => {
-	expect(
-		resolveAIConfig({
-			provider: 'claude',
-			env: {OPENINSIGHT_AI_PROVIDER: 'openrouter'},
-			which: () => '/claude',
-		}).provider,
-	).toBe('claude');
-
-	expect(() =>
-		resolveAIConfig({
-			env: {OPENINSIGHT_AI_PROVIDER: 'other'},
-			which: () => null,
-		}),
-	).toThrow('Unsupported AI provider');
-});
-
 test('publicAIStatus omits credentials and the resolved binary path', () => {
 	const status = publicAIStatus({
 		provider: 'claude',

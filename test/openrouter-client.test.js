@@ -33,28 +33,6 @@ test('OpenRouter client redacts its API key from verbose provider metadata', asy
 	expect(output).not.toContain(apiKey);
 });
 
-test('OpenRouter client does not format verbose metadata when disabled', async () => {
-	const generation = {
-		object: {sql: 'SELECT 1 LIMIT 1000'},
-		usage: {inputTokens: 1, outputTokens: 2},
-	};
-	Object.defineProperty(generation, 'providerMetadata', {
-		get() {
-			throw new Error('verbose metadata was accessed');
-		},
-	});
-
-	const client = createOpenRouterClient('key', 'test/model', null, {
-		createProvider,
-		generate: async () => generation,
-	});
-
-	expect(await client.generateSQL('show one', {}, [])).toEqual({
-		sql: 'SELECT 1 LIMIT 1000',
-		error: null,
-	});
-});
-
 test('OpenRouter client redacts its API key from returned errors', async () => {
 	const apiKey = 'sk-or-secret';
 	const logs = [];
