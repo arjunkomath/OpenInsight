@@ -58,6 +58,36 @@ test('Claude client runs an isolated structured-output request via stdin', async
 	expect(stdin).toContain('database_schema');
 });
 
+test('Claude client summarizes query results via structured output', async () => {
+	let invocation;
+	const client = createClaudeCliClient('/claude', 'opus', null, {
+		spawn: (command, options) => {
+			invocation = {command, options};
+			return fakeChild(
+				jsonResponse({
+					type: 'result',
+					subtype: 'success',
+					is_error: false,
+					structured_output: {summary: 'There are 12 active users.'},
+				}),
+			);
+		},
+	});
+
+	const result = await client.summarizeResults(
+		'How many users are active?',
+		'SELECT 12 AS active_users',
+		[{active_users: 12}],
+		'Be direct',
+	);
+
+	expect(result).toEqual({summary: 'There are 12 active users.', error: null});
+	expect(invocation.command.join(' ')).toContain('Summarize query results');
+	const stdin = await invocation.options.stdin.text();
+	expect(stdin).toContain('How many users are active?');
+	expect(stdin).toContain('Be direct');
+});
+
 test('Claude client emits full subprocess diagnostics only in verbose mode', async () => {
 	const logs = [];
 	const client = createClaudeCliClient(

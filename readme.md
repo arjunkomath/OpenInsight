@@ -61,6 +61,24 @@ OPENINSIGHT_CLAUDE_MODEL=sonnet openinsight --claude
 For a persistent provider choice, set `OPENINSIGHT_AI_PROVIDER=claude` instead
 of passing `--claude`. OpenRouter remains the default provider.
 
+### Summarize query results
+
+Pass `--summary` in TUI mode to make a second AI call after each successful query.
+The generated short summary is shown alongside the usual SQL and result table:
+
+```bash
+openinsight --summary
+```
+
+You can optionally provide an instruction that applies to each summary in the
+session:
+
+```bash
+openinsight --summary "Focus on unusual trends"
+```
+
+Result summarization is available only in the TUI, not the web UI.
+
 ### Verbose diagnostics
 
 Pass `--verbose` to show detailed diagnostics in the TUI transcript or the web

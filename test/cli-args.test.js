@@ -37,6 +37,7 @@ test('--help prints usage and exits 0', async () => {
 	expect(stdout).toContain('--claude');
 	expect(stdout).toContain('--verbose');
 	expect(stdout).toContain('--log');
+	expect(stdout).toContain('--summary');
 	expect(stdout).toContain('--port');
 });
 
@@ -74,6 +75,7 @@ test('parseCliArgs applies defaults', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -90,6 +92,7 @@ test('parseCliArgs converts port and keeps host', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
 		host: '0.0.0.0',
 		port: 8080,
 		open: true,
@@ -104,6 +107,7 @@ test('parseCliArgs ignores bare flag values that lack an argument', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -115,6 +119,7 @@ test('parseCliArgs ignores bare flag values that lack an argument', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -129,6 +134,7 @@ test('parseCliArgs disables browser launch with --no-open', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: false,
@@ -143,6 +149,7 @@ test('parseCliArgs keeps unknown flags permissive', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -157,6 +164,7 @@ test('parseCliArgs enables the Claude provider', () => {
 		claude: true,
 		verbose: false,
 		log: false,
+		summary: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -171,6 +179,7 @@ test('parseCliArgs enables verbose UI logging', () => {
 		claude: false,
 		verbose: true,
 		log: false,
+		summary: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -183,6 +192,17 @@ test('parseCliArgs enables file logging', () => {
 		command: null,
 		verbose: false,
 		log: true,
+	});
+});
+
+test('parseCliArgs enables summaries with an optional instruction', () => {
+	expect(parseCliArgs(['--summary'])).toMatchObject({summary: ''});
+	expect(parseCliArgs(['--summary', 'Focus on trends'])).toMatchObject({
+		summary: 'Focus on trends',
+	});
+	expect(parseCliArgs(['--summary', '--verbose'])).toMatchObject({
+		summary: '',
+		verbose: true,
 	});
 });
 

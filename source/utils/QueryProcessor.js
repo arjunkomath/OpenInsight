@@ -157,6 +157,42 @@ export async function generateQuery(
 	}
 }
 
+export async function summarizeQueryResults(
+	naturalLanguageQuery,
+	sql,
+	data,
+	instruction,
+	aiConfig,
+	onLog,
+	abortSignal,
+) {
+	const log = (message, options) => onLog?.(message, options);
+
+	try {
+		throwIfAborted(abortSignal, 'Summarization cancelled');
+		const aiClient = createAIClient(aiConfig, log);
+		log('Summarizing query results with AI...');
+		const result = await aiClient.summarizeResults(
+			naturalLanguageQuery,
+			sql,
+			data,
+			instruction,
+			abortSignal,
+		);
+		throwIfAborted(abortSignal, 'Summarization cancelled');
+		return result;
+	} catch (error) {
+		if (isAbortError(error)) {
+			return {cancelled: true, error: null, summary: null};
+		}
+
+		return {
+			error: error.message || 'Unexpected error while summarizing results',
+			summary: null,
+		};
+	}
+}
+
 export async function executeQuery(
 	sqlQuery,
 	connectionString,

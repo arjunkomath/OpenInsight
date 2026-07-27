@@ -1,13 +1,20 @@
 import {parseArgs} from 'node:util';
 
 export function parseCliArgs(args = Bun.argv.slice(2)) {
+	const normalizedArgs = args.flatMap((arg, index) =>
+		arg === '--summary' &&
+		(args[index + 1] === undefined || args[index + 1].startsWith('--'))
+			? ['--summary=']
+			: [arg],
+	);
 	const {values, positionals} = parseArgs({
-		args,
+		args: normalizedArgs,
 		options: {
 			web: {type: 'boolean', default: false},
 			claude: {type: 'boolean', default: false},
 			verbose: {type: 'boolean', default: false},
 			log: {type: 'boolean', default: false},
+			summary: {type: 'string'},
 			host: {type: 'string', default: '127.0.0.1'},
 			port: {type: 'string', default: '5678'},
 			open: {type: 'boolean', default: true},
@@ -23,6 +30,7 @@ export function parseCliArgs(args = Bun.argv.slice(2)) {
 		claude: values.claude === true,
 		verbose: values.verbose === true,
 		log: values.log === true,
+		summary: typeof values.summary === 'string' ? values.summary : null,
 		host: typeof values.host === 'string' ? values.host : '127.0.0.1',
 		port: typeof values.port === 'string' ? Number(values.port) : 5678,
 		open: values.open === true && values['no-open'] !== true,

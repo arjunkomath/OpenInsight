@@ -16,6 +16,7 @@ const helpText = `
 			--claude    Use the installed Claude Code CLI instead of OpenRouter
 			--verbose   Show detailed AI and database diagnostics in the UI
 			--log       Write detailed AI and database diagnostics to a log file
+			--summary   Summarize query results in the CLI (optional instruction)
 			--host      Host for web mode (default: 127.0.0.1)
 			--port      Port for web mode (default: 5678)
 			--no-open   Do not open the browser in web mode
@@ -24,6 +25,7 @@ const helpText = `
 		Examples
 		  $ OPENROUTER_KEY=your-key openinsight
 		  $ openinsight --claude
+		  $ openinsight --summary "Focus on unusual trends"
 		  $ OPENROUTER_KEY=your-key openinsight --web
 	`;
 
@@ -117,7 +119,12 @@ const exit = () => {
 
 const root = createRoot(renderer);
 root.render(
-	<App aiConfig={aiConfig} fileLog={fileLogger?.log} onRequestQuit={exit} />,
+	<App
+		aiConfig={aiConfig}
+		fileLog={fileLogger?.log}
+		onRequestQuit={exit}
+		summaryInstruction={flags.summary}
+	/>,
 );
 
 process.on('SIGINT', exit);
