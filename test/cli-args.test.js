@@ -312,8 +312,13 @@ printf '{"type":"result","subtype":"success","is_error":false,"structured_output
 
 		expect(result.code).toBe(0);
 		expect(result.stderr).toBe('');
+		expect(result.stdout).toContain('Selecting data source "production"...');
+		expect(result.stdout).toContain('Loading database schema...');
+		expect(result.stdout).toContain('Generating SQL...');
+		expect(result.stdout).toContain('Executing query...');
 		expect(result.stdout).toContain('SQL:\nSELECT name FROM users LIMIT 1000');
 		expect(result.stdout).toContain('"name": "Ada"');
+		expect(result.stdout).toContain('Summarizing results...');
 		expect(result.stdout).toContain('Summary:\nThe only user is Ada.');
 	} finally {
 		rmSync(directory, {recursive: true, force: true});

@@ -65,6 +65,7 @@ if (isOneShotQuery) {
 		process.exit(1);
 	}
 
+	console.log(`Selecting data source "${flags.source}"...`);
 	const sources = loadDataSources();
 	querySource = sources.find(
 		candidate =>
@@ -128,6 +129,7 @@ if (isOneShotQuery) {
 		fileLog: fileLogger?.log,
 		verbose: flags.verbose,
 	});
+	console.log('Loading database schema...');
 	const schemaResult = await fetchSchema(
 		querySource.connectionString,
 		querySource.type,
@@ -137,6 +139,7 @@ if (isOneShotQuery) {
 		process.exit(1);
 	}
 
+	console.log('Generating SQL...');
 	const generated = await generateQuery(
 		flags.query,
 		schemaResult.schema,
@@ -149,6 +152,7 @@ if (isOneShotQuery) {
 		process.exit(1);
 	}
 
+	console.log('Executing query...');
 	const executed = await executeQuery(
 		generated.sql,
 		querySource.connectionString,
@@ -165,6 +169,7 @@ if (isOneShotQuery) {
 	console.log(`\nResults:\n${stringifyResult(executed.data)}`);
 
 	if (flags.summary !== null) {
+		console.log('\nSummarizing results...');
 		const summarized = await summarizeQueryResults(
 			flags.query,
 			executed.sql,
