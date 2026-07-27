@@ -61,10 +61,38 @@ OPENINSIGHT_CLAUDE_MODEL=sonnet openinsight --claude
 For a persistent provider choice, set `OPENINSIGHT_AI_PROVIDER=claude` instead
 of passing `--claude`. OpenRouter remains the default provider.
 
+### Summarize query results
+
+Run a one-shot, non-interactive query by selecting a configured source by name or
+ID and providing a natural-language question:
+
+```bash
+openinsight --source production --query "Show monthly revenue"
+```
+
+Add `--summary` to make a second AI call that summarizes the results. An optional
+instruction can be provided with `--summary=<instruction>`:
+
+```bash
+openinsight --source production --query "Show monthly revenue" --summary
+openinsight --source production --query "Show monthly revenue" --summary="Focus on unusual trends"
+```
+
+The command prints the generated SQL and query results, followed by the summary,
+then exits. It does not start the TUI or web UI.
+
+One-shot queries support the existing provider and diagnostics options. For
+example, this uses Claude Code, prints verbose diagnostics to stderr, and writes
+the same diagnostics to the normal log file:
+
+```bash
+openinsight --claude --verbose --log --source production --query "Show monthly revenue" --summary
+```
+
 ### Verbose diagnostics
 
-Pass `--verbose` to show detailed diagnostics in the TUI transcript or the web
-UI's expanded Activity panel:
+Pass `--verbose` to show detailed diagnostics in the TUI transcript, the web
+UI's expanded Activity panel, or stderr for a one-shot query:
 
 ```bash
 openinsight --claude --verbose

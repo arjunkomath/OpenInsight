@@ -1,11 +1,19 @@
 import {test, expect} from 'bun:test';
 import {spawn} from 'node:child_process';
-import {mkdirSync, mkdtempSync, rmSync} from 'node:fs';
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseCliArgs} from '../source/utils/cli-args.js';
 import {getLogDir} from '../source/utils/Logger.js';
+import {createConnection} from '../source/utils/DbConnector.js';
 
 const repositoryDir = fileURLToPath(new URL('..', import.meta.url));
 const cliPath = fileURLToPath(new URL('../source/cli.js', import.meta.url));
@@ -74,6 +82,9 @@ test('parseCliArgs applies defaults', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
+		source: null,
+		query: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -90,6 +101,9 @@ test('parseCliArgs converts port and keeps host', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
+		source: null,
+		query: null,
 		host: '0.0.0.0',
 		port: 8080,
 		open: true,
@@ -104,6 +118,9 @@ test('parseCliArgs ignores bare flag values that lack an argument', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
+		source: null,
+		query: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -115,6 +132,9 @@ test('parseCliArgs ignores bare flag values that lack an argument', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
+		source: null,
+		query: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -129,6 +149,9 @@ test('parseCliArgs disables browser launch with --no-open', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
+		source: null,
+		query: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: false,
@@ -143,6 +166,9 @@ test('parseCliArgs keeps unknown flags permissive', () => {
 		claude: false,
 		verbose: false,
 		log: false,
+		summary: null,
+		source: null,
+		query: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -157,6 +183,9 @@ test('parseCliArgs enables the Claude provider', () => {
 		claude: true,
 		verbose: false,
 		log: false,
+		summary: null,
+		source: null,
+		query: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -171,6 +200,9 @@ test('parseCliArgs enables verbose UI logging', () => {
 		claude: false,
 		verbose: true,
 		log: false,
+		summary: null,
+		source: null,
+		query: null,
 		host: '127.0.0.1',
 		port: 5678,
 		open: true,
@@ -184,6 +216,107 @@ test('parseCliArgs enables file logging', () => {
 		verbose: false,
 		log: true,
 	});
+});
+
+test('parseCliArgs enables summaries with an optional instruction', () => {
+	expect(parseCliArgs(['--summary'])).toMatchObject({summary: ''});
+	expect(parseCliArgs(['--summary', 'Focus on trends'])).toMatchObject({
+		summary: 'Focus on trends',
+	});
+});
+
+test('one-shot CLI requires both a source and query', async () => {
+	const result = await runCli(['--summary']);
+	expect(result.code).toBe(1);
+	expect(result.stderr).toContain(
+		'One-shot queries require both --source and --query',
+	);
+});
+
+test('one-shot CLI selects a source, executes a query, summarizes, and exits', async () => {
+	const directory = mkdtempSync(join(tmpdir(), 'openinsight-cli-query-'));
+	const databasePath = join(directory, 'data.db');
+	const connectionString = `sqlite://${databasePath}`;
+	const configDirectory = join(directory, '.openinsight');
+	const fakeClaude = join(directory, 'claude');
+	const stateDirectory = join(directory, 'state');
+
+	try {
+		const database = await createConnection(connectionString);
+		await database.query('CREATE TABLE users (name TEXT)');
+		await database.query(`INSERT INTO users (name) VALUES ('Ada')`);
+		await database.close();
+
+		mkdirSync(configDirectory);
+		writeFileSync(
+			join(configDirectory, 'config.json'),
+			JSON.stringify({
+				version: '1.0.0',
+				dataSources: [
+					{
+						id: 'source-id',
+						name: 'production',
+						type: 'sqlite',
+						connectionString,
+					},
+				],
+				presets: {},
+			}),
+		);
+		writeFileSync(
+			fakeClaude,
+			`#!/bin/sh
+input=$(cat)
+case "$input" in
+  *"Summarize the database query results"*) value='{"summary":"The only user is Ada."}' ;;
+  *) value='{"sql":"SELECT name FROM users LIMIT 1000"}' ;;
+esac
+printf '{"type":"result","subtype":"success","is_error":false,"structured_output":%s}' "$value"
+`,
+		);
+		chmodSync(fakeClaude, 0o755);
+
+		const result = await runCli(
+			[
+				'--claude',
+				'--verbose',
+				'--log',
+				'--source',
+				'production',
+				'--query',
+				'List users',
+				'--summary',
+			],
+			{
+				cwd: directory,
+				env: {
+					...process.env,
+					PATH: `${directory}:${process.env.PATH}`,
+					XDG_STATE_HOME: stateDirectory,
+				},
+			},
+		);
+
+		expect(result.code).toBe(0);
+		expect(result.stderr).toContain('[Verbose][Query] Provider: claude');
+		expect(result.stderr).toContain('[Verbose][Claude] Prompt');
+		expect(result.stdout).toContain('Selecting data source "production"...');
+		expect(result.stdout).toContain('Loading database schema...');
+		expect(result.stdout).toContain('Generating SQL...');
+		expect(result.stdout).toContain('Executing query...');
+		expect(result.stdout).toContain('SQL:\nSELECT name FROM users LIMIT 1000');
+		expect(result.stdout).toContain('"name": "Ada"');
+		expect(result.stdout).toContain('Summarizing results...');
+		expect(result.stdout).toContain('Summary:\nThe only user is Ada.');
+		const log = readFileSync(
+			join(stateDirectory, 'openinsight', 'openinsight.log'),
+			'utf8',
+		);
+		expect(log).toContain('provider=claude');
+		expect(log).toContain('[AI Response] Summary: The only user is Ada.');
+	} finally {
+		rmSync(directory, {recursive: true, force: true});
+	}
 });
 
 test('parseCliArgs recognizes the paths command', () => {

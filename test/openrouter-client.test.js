@@ -54,3 +54,28 @@ test('OpenRouter client redacts its API key from returned errors', async () => {
 	expect(result.error).not.toContain(apiKey);
 	expect(logs.join('\n')).not.toContain(apiKey);
 });
+
+test('OpenRouter client summarizes query results with an optional instruction', async () => {
+	let request;
+	const client = createOpenRouterClient('key', 'test/model', null, {
+		createProvider,
+		generate: async options => {
+			request = options;
+			return {object: {summary: 'Revenue increased by 20%.'}};
+		},
+	});
+
+	const result = await client.summarizeResults(
+		'How is revenue changing?',
+		'SELECT revenue FROM sales',
+		[{revenue: 120n}],
+		'Compare with the prior period',
+	);
+
+	expect(result).toEqual({summary: 'Revenue increased by 20%.', error: null});
+	expect(request.messages[0].content).toContain('How is revenue changing?');
+	expect(request.messages[0].content).toContain('"revenue": "120"');
+	expect(request.messages[0].content).toContain(
+		'Compare with the prior period',
+	);
+});

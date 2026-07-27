@@ -1,21 +1,31 @@
 #!/usr/bin/env bun
 import {parseCliArgs} from './utils/cli-args.js';
 import {resolveAIConfig} from './utils/AIConfig.js';
-import {getConfigDir} from './utils/ConfigManager.js';
-import {createFileLogger, getLogDir} from './utils/Logger.js';
+import {getConfigDir, loadDataSources} from './utils/ConfigManager.js';
+import {createFileLogger, createLogHandler, getLogDir} from './utils/Logger.js';
+import {
+	executeQuery,
+	fetchSchema,
+	generateQuery,
+	summarizeQueryResults,
+} from './utils/QueryProcessor.js';
 import {existsSync} from 'node:fs';
 
 const helpText = `
 		Usage
 		  $ openinsight
 		  $ openinsight --web
+		  $ openinsight --source <name-or-id> --query <question>
 		  $ openinsight paths
 
 		Options
 			--web       Start the local web UI instead of the TUI
 			--claude    Use the installed Claude Code CLI instead of OpenRouter
-			--verbose   Show detailed AI and database diagnostics in the UI
+			--verbose   Show detailed AI and database diagnostics
 			--log       Write detailed AI and database diagnostics to a log file
+			--source    Configured data source name or ID for a one-shot query
+			--query     Natural-language question for a one-shot query
+			--summary   Summarize one-shot query results (optional instruction)
 			--host      Host for web mode (default: 127.0.0.1)
 			--port      Port for web mode (default: 5678)
 			--no-open   Do not open the browser in web mode
@@ -24,6 +34,9 @@ const helpText = `
 		Examples
 		  $ OPENROUTER_KEY=your-key openinsight
 		  $ openinsight --claude
+		  $ openinsight --source production --query "Top customers"
+		  $ openinsight --source production --query "Top customers" --summary="Focus on unusual trends"
+		  $ openinsight --claude --verbose --log --source production --query "Top customers" --summary
 		  $ OPENROUTER_KEY=your-key openinsight --web
 	`;
 
@@ -39,6 +52,34 @@ if (flags.command === 'paths') {
 	const configDir = getConfigDir();
 	if (existsSync(configDir)) console.log(`Config: ${configDir}`);
 	process.exit(0);
+}
+
+const isOneShotQuery =
+	flags.source !== null || flags.query !== null || flags.summary !== null;
+let querySource = null;
+
+if (isOneShotQuery) {
+	if (!flags.source || !flags.query) {
+		console.error(
+			'OpenInsight: One-shot queries require both --source and --query.',
+		);
+		process.exit(1);
+	}
+
+	console.log(`Selecting data source "${flags.source}"...`);
+	const sources = loadDataSources();
+	querySource = sources.find(
+		candidate =>
+			candidate.id === flags.source || candidate.name === flags.source,
+	);
+
+	if (!querySource) {
+		const available = sources.map(candidate => candidate.name).join(', ');
+		console.error(
+			`OpenInsight: Data source "${flags.source}" not found.${available ? ` Available sources: ${available}` : ' No data sources are configured.'}`,
+		);
+		process.exit(1);
+	}
 }
 
 let aiConfig;
@@ -83,6 +124,71 @@ if (flags.log) {
 	}
 }
 
+if (isOneShotQuery) {
+	const log = createLogHandler({
+		uiLog: flags.verbose ? message => console.error(message) : undefined,
+		fileLog: fileLogger?.log,
+		verbose: flags.verbose,
+	});
+	console.log('Loading database schema...');
+	const schemaResult = await fetchSchema(
+		querySource.connectionString,
+		querySource.type,
+	);
+	if (schemaResult.error) {
+		console.error(`OpenInsight: ${schemaResult.error}`);
+		process.exit(1);
+	}
+
+	console.log('Generating SQL...');
+	const generated = await generateQuery(
+		flags.query,
+		schemaResult.schema,
+		aiConfig,
+		[],
+		log,
+	);
+	if (generated.error) {
+		console.error(`OpenInsight: ${generated.error}`);
+		process.exit(1);
+	}
+
+	console.log('Executing query...');
+	const executed = await executeQuery(
+		generated.sql,
+		querySource.connectionString,
+		schemaResult.schema,
+		aiConfig,
+		log,
+	);
+	if (executed.error) {
+		console.error(`OpenInsight: ${executed.error}`);
+		process.exit(1);
+	}
+
+	console.log(`SQL:\n${executed.sql}`);
+	console.log(`\nResults:\n${stringifyResult(executed.data)}`);
+
+	if (flags.summary !== null) {
+		console.log('\nSummarizing results...');
+		const summarized = await summarizeQueryResults(
+			flags.query,
+			executed.sql,
+			executed.data,
+			flags.summary,
+			aiConfig,
+			log,
+		);
+		if (summarized.error) {
+			console.error(`OpenInsight: ${summarized.error}`);
+			process.exit(1);
+		}
+		console.log(`\nSummary:\n${summarized.summary}`);
+	}
+
+	process.exit(0);
+}
+
 if (flags.web) {
 	const {startWebServer} = await import('./web/server.js');
 	startWebServer({
@@ -122,3 +228,11 @@ root.render(
 
 process.on('SIGINT', exit);
 process.on('SIGTERM', exit);
+
+function stringifyResult(value) {
+	return JSON.stringify(
+		value,
+		(_key, item) => (typeof item === 'bigint' ? item.toString() : item),
+		2,
+	);
+}
