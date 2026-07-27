@@ -6,6 +6,8 @@ const DEFAULT_CLAUDE_MODEL = 'opus';
 export function resolveAIConfig({
 	provider,
 	verbose = false,
+	diagnostics = verbose,
+	logging = false,
 	env = process.env,
 	which = Bun.which,
 } = {}) {
@@ -21,6 +23,8 @@ export function resolveAIConfig({
 			provider: selectedProvider,
 			model: env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL,
 			verbose,
+			diagnostics,
+			logging,
 			apiKey,
 			available: Boolean(apiKey),
 			unavailableMessage: apiKey
@@ -35,6 +39,8 @@ export function resolveAIConfig({
 			provider: selectedProvider,
 			model: env.OPENINSIGHT_CLAUDE_MODEL || DEFAULT_CLAUDE_MODEL,
 			verbose,
+			diagnostics,
+			logging,
 			binaryPath,
 			available: Boolean(binaryPath),
 			unavailableMessage: binaryPath
@@ -53,6 +59,7 @@ export function publicAIStatus(config) {
 		provider: config.provider,
 		model: config.model,
 		verbose: config.verbose,
+		logging: config.logging,
 		available: config.available,
 		unavailableMessage: config.unavailableMessage,
 	};

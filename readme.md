@@ -78,6 +78,26 @@ per entry). Connection credentials and the resolved Claude executable path are n
 logged. Because prompts and query results can contain sensitive application data,
 enable verbose mode only while diagnosing a problem.
 
+To write the same detailed diagnostics to a file without expanding the UI
+activity, pass `--log`:
+
+```bash
+openinsight --log
+openinsight --web --log
+```
+
+Use `--verbose --log` to send detailed diagnostics to both the UI and the log.
+Log entries are timestamped and appended to `openinsight.log` in the platform's
+standard log or state directory:
+
+- Linux: `${XDG_STATE_HOME:-~/.local/state}/openinsight`
+- macOS: `~/Library/Logs/OpenInsight`
+- Windows: `%LOCALAPPDATA%\OpenInsight\Logs`
+
+Run `openinsight paths` to print the log directory and, when it exists, the
+project-local `.openinsight` config directory. Log files can contain prompts,
+schemas, SQL, and query results, so handle them as sensitive data.
+
 ---
 
 Made with ❤️ for data exploration

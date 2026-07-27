@@ -6,6 +6,7 @@ import QueryInterface from './components/QueryInterface.js';
 import Spinner from './components/Spinner.js';
 import {theme} from './theme.js';
 import {copySelectionToClipboard} from './utils/clipboard.js';
+import {createLogHandler} from './utils/Logger.js';
 import {
 	loadDataSources,
 	addDataSource,
@@ -47,7 +48,7 @@ function ClipboardToast() {
 	);
 }
 
-export default function App({aiConfig, onRequestQuit = () => {}}) {
+export default function App({aiConfig, fileLog, onRequestQuit = () => {}}) {
 	const [appState, setAppState] = useState('manage-sources');
 	const [dataSources, setDataSources] = useState(loadDataSources);
 	const [selectedSource, setSelectedSource] = useState(null);
@@ -138,7 +139,14 @@ export default function App({aiConfig, onRequestQuit = () => {}}) {
 			return {error: 'Database schema not loaded', sql: null};
 		}
 
-		return generateQuery(query, schema, aiConfig, history, onLog, abortSignal);
+		return generateQuery(
+			query,
+			schema,
+			aiConfig,
+			history,
+			createLogHandler({uiLog: onLog, fileLog, verbose: aiConfig.verbose}),
+			abortSignal,
+		);
 	};
 
 	const handleExecuteQuery = async (sql, onLog, abortSignal) => {
@@ -151,7 +159,7 @@ export default function App({aiConfig, onRequestQuit = () => {}}) {
 			selectedSource.connectionString,
 			schema,
 			aiConfig,
-			onLog,
+			createLogHandler({uiLog: onLog, fileLog, verbose: aiConfig.verbose}),
 			abortSignal,
 		);
 	};
@@ -190,6 +198,7 @@ export default function App({aiConfig, onRequestQuit = () => {}}) {
 				aiUnavailableMessage={aiConfig.unavailableMessage}
 				model={aiConfig.model}
 				verbose={aiConfig.verbose}
+				logging={aiConfig.logging}
 				source={selectedSource}
 				sources={dataSources}
 				schema={schema}

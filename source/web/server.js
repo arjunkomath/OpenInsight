@@ -25,9 +25,11 @@ import {
 	generateQuery,
 } from '../utils/QueryProcessor.js';
 import {publicAIStatus, resolveAIConfig} from '../utils/AIConfig.js';
+import {createLogHandler} from '../utils/Logger.js';
 
 const schemas = new Map();
 let configuredAI;
+let configuredFileLog;
 const assets = {
 	'/': {body: indexHtml, contentType: 'text/html; charset=utf-8'},
 	'/index.html': {body: indexHtml, contentType: 'text/html; charset=utf-8'},
@@ -178,12 +180,17 @@ const routeApi = async (request, url) => {
 		if (schemaResult.error) return json({error: schemaResult.error}, 400);
 
 		const logs = [];
+		const onLog = createLogHandler({
+			uiLog: message => logs.push(message),
+			fileLog: configuredFileLog,
+			verbose: configuredAI.verbose,
+		});
 		const result = await generateQuery(
 			body?.query || '',
 			schemaResult.schema,
 			configuredAI,
 			body?.history || [],
-			message => logs.push(message),
+			onLog,
 		);
 
 		return json({...result, logs});
@@ -198,12 +205,17 @@ const routeApi = async (request, url) => {
 		if (schemaResult.error) return json({error: schemaResult.error}, 400);
 
 		const logs = [];
+		const onLog = createLogHandler({
+			uiLog: message => logs.push(message),
+			fileLog: configuredFileLog,
+			verbose: configuredAI.verbose,
+		});
 		const result = await executeQuery(
 			body?.sql || '',
 			source.connectionString,
 			schemaResult.schema,
 			configuredAI,
-			message => logs.push(message),
+			onLog,
 		);
 
 		return json({...result, logs});
@@ -240,8 +252,10 @@ export function startWebServer({
 	port = 5678,
 	open = true,
 	aiConfig = resolveAIConfig(),
+	fileLog,
 } = {}) {
 	configuredAI = aiConfig;
+	configuredFileLog = fileLog;
 	const server = Bun.serve({
 		host,
 		port,

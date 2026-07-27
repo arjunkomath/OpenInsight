@@ -23,14 +23,14 @@ export function createOpenRouterClient(
 
 	const redactApiKey = value =>
 		String(value).split(apiKey).join('<redacted-api-key>');
-	const log = message => onLog?.(redactApiKey(message));
+	const log = (message, options) => onLog?.(redactApiKey(message), options);
 	const verboseLog = messageOrFactory => {
 		if (!verbose) return;
 		const message =
 			typeof messageOrFactory === 'function'
 				? messageOrFactory()
 				: messageOrFactory;
-		log(`[Verbose][OpenRouter] ${message}`);
+		log(`[Verbose][OpenRouter] ${message}`, {verbose: true});
 	};
 
 	const openrouter = createProvider({

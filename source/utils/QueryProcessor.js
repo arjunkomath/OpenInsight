@@ -84,14 +84,14 @@ export async function generateQuery(
 	onLog,
 	abortSignal,
 ) {
-	const log = message => onLog?.(message);
+	const log = (message, options) => onLog?.(message, options);
 	const verboseLog = messageOrFactory => {
-		if (!aiConfig?.verbose) return;
+		if (!(aiConfig?.diagnostics ?? aiConfig?.verbose)) return;
 		const message =
 			typeof messageOrFactory === 'function'
 				? messageOrFactory()
 				: messageOrFactory;
-		log(`[Verbose][Query] ${message}`);
+		log(`[Verbose][Query] ${message}`, {verbose: true});
 	};
 
 	if (!aiConfig?.available) {
@@ -167,14 +167,15 @@ export async function executeQuery(
 ) {
 	const redactDatabaseSecrets = value =>
 		redactConnectionDetails(value, connectionString);
-	const log = message => onLog?.(redactDatabaseSecrets(message));
+	const log = (message, options) =>
+		onLog?.(redactDatabaseSecrets(message), options);
 	const verboseLog = messageOrFactory => {
-		if (!aiConfig?.verbose) return;
+		if (!(aiConfig?.diagnostics ?? aiConfig?.verbose)) return;
 		const message =
 			typeof messageOrFactory === 'function'
 				? messageOrFactory()
 				: messageOrFactory;
-		log(`[Verbose][Query] ${message}`);
+		log(`[Verbose][Query] ${message}`, {verbose: true});
 	};
 	verboseLog(`Provider: ${aiConfig?.provider || 'unavailable'}`);
 	verboseLog(`Model: ${aiConfig?.model || 'unavailable'}`);
