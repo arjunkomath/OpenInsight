@@ -19,7 +19,6 @@ import {
 	generateQuery,
 	executeQuery,
 	fetchSchema,
-	summarizeQueryResults,
 } from './utils/QueryProcessor.js';
 
 const COPY_FEEDBACK_DURATION_MS = 1500;
@@ -49,12 +48,7 @@ function ClipboardToast() {
 	);
 }
 
-export default function App({
-	aiConfig,
-	fileLog,
-	onRequestQuit = () => {},
-	summaryInstruction = null,
-}) {
+export default function App({aiConfig, fileLog, onRequestQuit = () => {}}) {
 	const [appState, setAppState] = useState('manage-sources');
 	const [dataSources, setDataSources] = useState(loadDataSources);
 	const [selectedSource, setSelectedSource] = useState(null);
@@ -155,17 +149,12 @@ export default function App({
 		);
 	};
 
-	const handleExecuteQuery = async (
-		sql,
-		naturalLanguageQuery,
-		onLog,
-		abortSignal,
-	) => {
+	const handleExecuteQuery = async (sql, onLog, abortSignal) => {
 		if (!schema) {
 			return {error: 'Database schema not loaded', sql, data: null};
 		}
 
-		const result = await executeQuery(
+		return executeQuery(
 			sql,
 			selectedSource.connectionString,
 			schema,
@@ -173,27 +162,6 @@ export default function App({
 			createLogHandler({uiLog: onLog, fileLog, verbose: aiConfig.verbose}),
 			abortSignal,
 		);
-
-		if (result.error || result.cancelled || summaryInstruction === null) {
-			return result;
-		}
-
-		const summaryResult = await summarizeQueryResults(
-			naturalLanguageQuery,
-			result.sql,
-			result.data,
-			summaryInstruction,
-			aiConfig,
-			createLogHandler({uiLog: onLog, fileLog, verbose: aiConfig.verbose}),
-			abortSignal,
-		);
-
-		return {
-			...result,
-			summary: summaryResult.summary,
-			summaryError: summaryResult.error,
-			summaryCancelled: summaryResult.cancelled === true,
-		};
 	};
 
 	let content = null;

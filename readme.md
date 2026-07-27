@@ -63,21 +63,23 @@ of passing `--claude`. OpenRouter remains the default provider.
 
 ### Summarize query results
 
-Pass `--summary` in TUI mode to make a second AI call after each successful query.
-The generated short summary is shown alongside the usual SQL and result table:
+Run a one-shot, non-interactive query by selecting a configured source by name or
+ID and providing a natural-language question:
 
 ```bash
-openinsight --summary
+openinsight --source production --query "Show monthly revenue"
 ```
 
-You can optionally provide an instruction that applies to each summary in the
-session:
+Add `--summary` to make a second AI call that summarizes the results. An optional
+instruction can be provided with `--summary=<instruction>`:
 
 ```bash
-openinsight --summary "Focus on unusual trends"
+openinsight --source production --query "Show monthly revenue" --summary
+openinsight --source production --query "Show monthly revenue" --summary="Focus on unusual trends"
 ```
 
-Result summarization is available only in the TUI, not the web UI.
+The command prints the generated SQL and query results, followed by the summary,
+then exits. It does not start the TUI or web UI.
 
 ### Verbose diagnostics
 

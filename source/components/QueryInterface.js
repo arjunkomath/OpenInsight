@@ -117,11 +117,6 @@ function MessageView({message, tableWidth}) {
 						{table}
 					</text>
 				) : null}
-				{message.summary ? (
-					<text fg={theme.default} wrapMode="word">
-						{message.summary}
-					</text>
-				) : null}
 				{message.resultCount === 0 ? (
 					<text fg={theme.default} attributes={DIM}>
 						No results
@@ -307,13 +302,13 @@ export default function QueryInterface({
 
 	const executeConfirmedQuery = async () => {
 		resetPromptInteraction();
-		const {sql, query} = pendingQuery;
+		const {sql} = pendingQuery;
 		setPendingQuery(null);
 		const controller = beginProcessing('execution');
 		let result;
 
 		try {
-			result = await onExecuteQuery(sql, query, addLog, controller.signal);
+			result = await onExecuteQuery(sql, addLog, controller.signal);
 		} catch (error) {
 			result = {
 				error: error.message || 'Unexpected error while executing query',
@@ -333,17 +328,7 @@ export default function QueryInterface({
 			addMessage({role: 'error', content: result.error});
 		} else {
 			setLastExecutedSql(result.sql);
-			addMessage({
-				role: 'assistant',
-				content: result.sql,
-				data: result.data,
-				summary: result.summary,
-			});
-			if (result.summaryError) {
-				addMessage({role: 'error', content: result.summaryError});
-			} else if (result.summaryCancelled) {
-				addMessage({role: 'system', content: 'Summarization cancelled'});
-			}
+			addMessage({role: 'assistant', content: result.sql, data: result.data});
 		}
 	};
 
