@@ -4,6 +4,7 @@ import {
 	chmodSync,
 	mkdirSync,
 	mkdtempSync,
+	readFileSync,
 	rmSync,
 	writeFileSync,
 } from 'node:fs';
@@ -259,6 +260,7 @@ test('one-shot CLI selects a source, executes a query, summarizes, and exits', a
 	const connectionString = `sqlite://${databasePath}`;
 	const configDirectory = join(directory, '.openinsight');
 	const fakeClaude = join(directory, 'claude');
+	const stateDirectory = join(directory, 'state');
 
 	try {
 		const database = await createConnection(connectionString);
@@ -298,6 +300,8 @@ printf '{"type":"result","subtype":"success","is_error":false,"structured_output
 		const result = await runCli(
 			[
 				'--claude',
+				'--verbose',
+				'--log',
 				'--source',
 				'production',
 				'--query',
@@ -306,12 +310,17 @@ printf '{"type":"result","subtype":"success","is_error":false,"structured_output
 			],
 			{
 				cwd: directory,
-				env: {...process.env, PATH: `${directory}:${process.env.PATH}`},
+				env: {
+					...process.env,
+					PATH: `${directory}:${process.env.PATH}`,
+					XDG_STATE_HOME: stateDirectory,
+				},
 			},
 		);
 
 		expect(result.code).toBe(0);
-		expect(result.stderr).toBe('');
+		expect(result.stderr).toContain('[Verbose][Query] Provider: claude');
+		expect(result.stderr).toContain('[Verbose][Claude] Prompt');
 		expect(result.stdout).toContain('Selecting data source "production"...');
 		expect(result.stdout).toContain('Loading database schema...');
 		expect(result.stdout).toContain('Generating SQL...');
@@ -320,6 +329,12 @@ printf '{"type":"result","subtype":"success","is_error":false,"structured_output
 		expect(result.stdout).toContain('"name": "Ada"');
 		expect(result.stdout).toContain('Summarizing results...');
 		expect(result.stdout).toContain('Summary:\nThe only user is Ada.');
+		const log = readFileSync(
+			join(stateDirectory, 'openinsight', 'openinsight.log'),
+			'utf8',
+		);
+		expect(log).toContain('provider=claude');
+		expect(log).toContain('[AI Response] Summary: The only user is Ada.');
 	} finally {
 		rmSync(directory, {recursive: true, force: true});
 	}

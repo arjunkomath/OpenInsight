@@ -81,10 +81,18 @@ openinsight --source production --query "Show monthly revenue" --summary="Focus 
 The command prints the generated SQL and query results, followed by the summary,
 then exits. It does not start the TUI or web UI.
 
+One-shot queries support the existing provider and diagnostics options. For
+example, this uses Claude Code, prints verbose diagnostics to stderr, and writes
+the same diagnostics to the normal log file:
+
+```bash
+openinsight --claude --verbose --log --source production --query "Show monthly revenue" --summary
+```
+
 ### Verbose diagnostics
 
-Pass `--verbose` to show detailed diagnostics in the TUI transcript or the web
-UI's expanded Activity panel:
+Pass `--verbose` to show detailed diagnostics in the TUI transcript, the web
+UI's expanded Activity panel, or stderr for a one-shot query:
 
 ```bash
 openinsight --claude --verbose

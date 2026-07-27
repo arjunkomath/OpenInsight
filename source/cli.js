@@ -21,7 +21,7 @@ const helpText = `
 		Options
 			--web       Start the local web UI instead of the TUI
 			--claude    Use the installed Claude Code CLI instead of OpenRouter
-			--verbose   Show detailed AI and database diagnostics in the UI
+			--verbose   Show detailed AI and database diagnostics
 			--log       Write detailed AI and database diagnostics to a log file
 			--source    Configured data source name or ID for a one-shot query
 			--query     Natural-language question for a one-shot query
@@ -36,6 +36,7 @@ const helpText = `
 		  $ openinsight --claude
 		  $ openinsight --source production --query "Top customers"
 		  $ openinsight --source production --query "Top customers" --summary="Focus on unusual trends"
+		  $ openinsight --claude --verbose --log --source production --query "Top customers" --summary
 		  $ OPENROUTER_KEY=your-key openinsight --web
 	`;
 
