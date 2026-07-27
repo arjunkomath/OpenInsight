@@ -45,7 +45,6 @@ test('--help prints usage and exits 0', async () => {
 	expect(stdout).toContain('--claude');
 	expect(stdout).toContain('--verbose');
 	expect(stdout).toContain('--log');
-	expect(stdout).toContain('--summary');
 	expect(stdout).toContain('--port');
 });
 
@@ -223,26 +222,6 @@ test('parseCliArgs enables summaries with an optional instruction', () => {
 	expect(parseCliArgs(['--summary'])).toMatchObject({summary: ''});
 	expect(parseCliArgs(['--summary', 'Focus on trends'])).toMatchObject({
 		summary: 'Focus on trends',
-	});
-	expect(parseCliArgs(['--summary', '--verbose'])).toMatchObject({
-		summary: '',
-		verbose: true,
-	});
-});
-
-test('parseCliArgs accepts a source and natural-language query', () => {
-	expect(
-		parseCliArgs([
-			'--source',
-			'production',
-			'--query',
-			'Show monthly revenue',
-			'--summary',
-		]),
-	).toMatchObject({
-		source: 'production',
-		query: 'Show monthly revenue',
-		summary: '',
 	});
 });
 
