@@ -277,6 +277,7 @@ const renderTopbar = () => {
 			? '<span class="tag tag-warn">AI unavailable</span>'
 			: '',
 		state.status?.verbose ? '<span class="tag tag-warn">Verbose</span>' : '',
+		state.status?.logging ? '<span class="tag tag-warn">Logging</span>' : '',
 		state.status?.configDir
 			? `<span class="tag tag-quiet" title="${escapeHtml(state.status.configDir)}">Local config</span>`
 			: '',

@@ -152,6 +152,7 @@ export default function QueryInterface({
 	aiUnavailableMessage,
 	model,
 	verbose,
+	logging,
 }) {
 	const [input, setInput] = useState('');
 	const [inputKey, setInputKey] = useState(0);
@@ -863,6 +864,7 @@ export default function QueryInterface({
 				<text fg={theme.gray}> ({source.type})</text>
 				{!aiAvailable && <text fg={theme.red}> [AI unavailable]</text>}
 				{verbose && <text fg={theme.yellow}> [verbose]</text>}
+				{logging && <text fg={theme.yellow}> [logging]</text>}
 			</box>
 
 			<scrollbox
@@ -981,6 +983,7 @@ export default function QueryInterface({
 				<text fg={theme.default} attributes={DIM}>
 					⚡ {model.split('/').pop()}
 					{verbose ? ' • verbose' : ''}
+					{logging ? ' • logging' : ''}
 				</text>
 			</box>
 		</box>

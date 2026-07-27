@@ -1,5 +1,6 @@
 import {test, expect} from 'bun:test';
 import {createConnection} from '../source/utils/DbConnector.js';
+import {createLogHandler} from '../source/utils/Logger.js';
 import {executeQuery} from '../source/utils/QueryProcessor.js';
 
 test('executeQuery rejects non-read-only SQL before connecting', async () => {
@@ -17,21 +18,27 @@ test('executeQuery rejects non-read-only SQL before connecting', async () => {
 	});
 });
 
-test('executeQuery redacts database credentials from verbose logs', async () => {
-	const logs = [];
+test('executeQuery redacts database credentials before file logging', async () => {
+	const uiLogs = [];
+	const fileLogs = [];
 	const result = await executeQuery(
 		'DELETE FROM users',
 		'postgres://user:pa/ss@localhost/database',
 		{},
 		{provider: 'claude', model: 'opus', available: true, verbose: true},
-		message => logs.push(message),
+		createLogHandler({
+			uiLog: message => uiLogs.push(message),
+			fileLog: message => fileLogs.push(message),
+			verbose: false,
+		}),
 	);
 
 	expect(result.error).toBe('Only SELECT queries are allowed');
-	expect(logs.join('\n')).toContain(
+	expect(uiLogs).toEqual([]);
+	expect(fileLogs.join('\n')).toContain(
 		'postgres://<credentials>@localhost/database',
 	);
-	expect(logs.join('\n')).not.toContain('user:pa/ss');
+	expect(fileLogs.join('\n')).not.toContain('user:pa/ss');
 });
 
 test('executeQuery does not require AI when the first attempt succeeds', async () => {

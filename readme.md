@@ -73,10 +73,33 @@ openinsight --web --verbose
 
 Verbose output includes complete AI prompts, schemas, conversation history,
 provider responses and metadata, subprocess stdout/stderr, generated and repaired
-SQL, database timing, result columns, and result data (capped at 20,000 characters
-per entry). Connection credentials and the resolved Claude executable path are not
-logged. Because prompts and query results can contain sensitive application data,
-enable verbose mode only while diagnosing a problem.
+SQL, database timing, result columns, and result data. Connection credentials and
+the resolved Claude executable path are not logged. Because prompts and query
+results can contain sensitive application data, enable verbose mode only while
+diagnosing a problem.
+
+To write the same detailed diagnostics to a file without expanding the UI
+activity, pass `--log`:
+
+```bash
+openinsight --log
+openinsight --web --log
+```
+
+Use `--verbose --log` to send detailed diagnostics to both the UI and the log.
+Log entries are timestamped and appended to `openinsight.log` in the platform's
+standard log or state directory:
+
+- Linux: `${XDG_STATE_HOME:-~/.local/state}/openinsight`
+- macOS: `~/Library/Logs/OpenInsight`
+- Windows: `%LOCALAPPDATA%\OpenInsight\Logs`
+
+Each file entry is capped at 20,000 characters. The log rotates at 5 MiB and
+retains one archive as `openinsight.log.1`.
+
+Run `openinsight paths` to print the log directory and, when it exists, the
+project-local `.openinsight` config directory. Log files can contain prompts,
+schemas, SQL, and query results, so handle them as sensitive data.
 
 ---
 

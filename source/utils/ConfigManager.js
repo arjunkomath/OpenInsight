@@ -1,7 +1,7 @@
 import {readFileSync, writeFileSync, existsSync, mkdirSync} from 'fs';
 import {join} from 'path';
 
-const getConfigDir = () => join(process.cwd(), '.openinsight');
+export const getConfigDir = () => join(process.cwd(), '.openinsight');
 const getConfigFile = () => join(getConfigDir(), 'config.json');
 
 function loadConfig() {

@@ -8,13 +8,13 @@ export function createAIClient(config, onLog) {
 
 	if (config.provider === 'claude') {
 		return createClaudeCliClient(config.binaryPath, config.model, onLog, {
-			verbose: config.verbose,
+			verbose: config.diagnostics ?? config.verbose,
 		});
 	}
 
 	if (config.provider === 'openrouter') {
 		return createOpenRouterClient(config.apiKey, config.model, onLog, {
-			verbose: config.verbose,
+			verbose: config.diagnostics ?? config.verbose,
 		});
 	}
 

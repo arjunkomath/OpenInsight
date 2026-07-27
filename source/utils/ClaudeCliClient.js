@@ -23,9 +23,9 @@ export function createClaudeCliClient(
 
 	const redactBinaryPath = value =>
 		String(value).split(binaryPath).join('<claude-binary>');
-	const log = message => onLog?.(redactBinaryPath(message));
+	const log = (message, options) => onLog?.(redactBinaryPath(message), options);
 	const verboseLog = message => {
-		if (verbose) log(`[Verbose][Claude] ${message}`);
+		if (verbose) log(`[Verbose][Claude] ${message}`, {verbose: true});
 	};
 
 	return {
