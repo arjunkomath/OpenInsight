@@ -24,11 +24,10 @@ import {
 	fetchSchema,
 	generateQuery,
 } from '../utils/QueryProcessor.js';
-
-const {OPENROUTER_KEY, OPENROUTER_MODEL = 'google/gemini-2.5-flash'} =
-	process.env;
+import {publicAIStatus, resolveAIConfig} from '../utils/AIConfig.js';
 
 const schemas = new Map();
+let configuredAI;
 const assets = {
 	'/': {body: indexHtml, contentType: 'text/html; charset=utf-8'},
 	'/index.html': {body: indexHtml, contentType: 'text/html; charset=utf-8'},
@@ -90,8 +89,7 @@ const loadSchemaForSource = async source => {
 const routeApi = async (request, url) => {
 	if (url.pathname === '/api/status' && request.method === 'GET') {
 		return json({
-			hasApiKey: Boolean(OPENROUTER_KEY),
-			model: OPENROUTER_MODEL,
+			...publicAIStatus(configuredAI),
 			configDir: join(process.cwd(), '.openinsight'),
 		});
 	}
@@ -172,11 +170,8 @@ const routeApi = async (request, url) => {
 		const body = await parseJson(request);
 		const source = getSourceOrResponse(body?.sourceId);
 		if (source instanceof Response) return source;
-		if (!OPENROUTER_KEY) {
-			return json(
-				{error: 'OPENROUTER_KEY environment variable is required'},
-				400,
-			);
+		if (!configuredAI.available) {
+			return json({error: configuredAI.unavailableMessage}, 400);
 		}
 
 		const schemaResult = await loadSchemaForSource(source);
@@ -186,8 +181,7 @@ const routeApi = async (request, url) => {
 		const result = await generateQuery(
 			body?.query || '',
 			schemaResult.schema,
-			OPENROUTER_KEY,
-			OPENROUTER_MODEL,
+			configuredAI,
 			body?.history || [],
 			message => logs.push(message),
 		);
@@ -208,8 +202,7 @@ const routeApi = async (request, url) => {
 			body?.sql || '',
 			source.connectionString,
 			schemaResult.schema,
-			OPENROUTER_KEY,
-			OPENROUTER_MODEL,
+			configuredAI,
 			message => logs.push(message),
 		);
 
@@ -246,7 +239,9 @@ export function startWebServer({
 	host = '127.0.0.1',
 	port = 5678,
 	open = true,
+	aiConfig = resolveAIConfig(),
 } = {}) {
+	configuredAI = aiConfig;
 	const server = Bun.serve({
 		host,
 		port,

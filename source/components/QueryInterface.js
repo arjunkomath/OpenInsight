@@ -148,8 +148,10 @@ export default function QueryInterface({
 	onDeletePreset,
 	onDeleteSource,
 	onRequestQuit,
-	hasApiKey,
+	aiAvailable,
+	aiUnavailableMessage,
 	model,
+	verbose,
 }) {
 	const [input, setInput] = useState('');
 	const [inputKey, setInputKey] = useState(0);
@@ -544,10 +546,10 @@ export default function QueryInterface({
 			return;
 		}
 
-		if (!hasApiKey) {
+		if (!aiAvailable) {
 			addMessage({
 				role: 'error',
-				content: 'OPENROUTER_KEY environment variable is required',
+				content: aiUnavailableMessage,
 			});
 			return;
 		}
@@ -859,7 +861,8 @@ export default function QueryInterface({
 					{source.name}
 				</text>
 				<text fg={theme.gray}> ({source.type})</text>
-				{!hasApiKey && <text fg={theme.red}> [No API Key]</text>}
+				{!aiAvailable && <text fg={theme.red}> [AI unavailable]</text>}
+				{verbose && <text fg={theme.yellow}> [verbose]</text>}
 			</box>
 
 			<scrollbox
@@ -977,6 +980,7 @@ export default function QueryInterface({
 				</text>
 				<text fg={theme.default} attributes={DIM}>
 					⚡ {model.split('/').pop()}
+					{verbose ? ' • verbose' : ''}
 				</text>
 			</box>
 		</box>

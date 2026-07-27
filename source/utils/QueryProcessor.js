@@ -1,5 +1,5 @@
 import {createConnection} from './DbConnector.js';
-import {createOpenRouterClient} from './OpenRouterClient.js';
+import {createAIClient} from './AIClient.js';
 import {isAbortError, throwIfAborted} from './abort.js';
 
 async function getSchema(conn, dbType) {
@@ -79,35 +79,52 @@ export async function fetchSchema(connectionString, dbType) {
 export async function generateQuery(
 	naturalLanguageQuery,
 	schema,
-	openRouterKey,
-	model,
+	aiConfig,
 	history,
 	onLog,
 	abortSignal,
 ) {
 	const log = message => onLog?.(message);
+	const verboseLog = messageOrFactory => {
+		if (!aiConfig?.verbose) return;
+		const message =
+			typeof messageOrFactory === 'function'
+				? messageOrFactory()
+				: messageOrFactory;
+		log(`[Verbose][Query] ${message}`);
+	};
 
-	if (!openRouterKey) {
+	if (!aiConfig?.available) {
 		return {
-			error: 'OPENROUTER_KEY environment variable is required',
+			error: aiConfig?.unavailableMessage || 'AI provider is unavailable',
 			sql: null,
 		};
 	}
 
 	const tableCount = Object.keys(schema).length;
 	log(`Using cached schema (${tableCount} tables)`);
+	verboseLog(`Provider: ${aiConfig.provider}`);
+	verboseLog(`Model: ${aiConfig.model}`);
+	verboseLog(`Natural-language query:\n${naturalLanguageQuery}`);
+	verboseLog(() => `Schema:\n${formatVerboseValue(schema)}`);
+	verboseLog(
+		() => `Conversation history:\n${formatVerboseValue(history || [])}`,
+	);
 
 	try {
 		throwIfAborted(abortSignal, 'Inference cancelled');
 
-		const aiClient = createOpenRouterClient(openRouterKey, model, log);
+		const aiClient = createAIClient(aiConfig, log);
 		log('Generating SQL with AI...');
+		const startedAt = Date.now();
 		const result = await aiClient.generateSQL(
 			naturalLanguageQuery,
 			schema,
 			history || [],
 			abortSignal,
 		);
+		verboseLog(`Inference completed in ${Date.now() - startedAt}ms`);
+		verboseLog(() => `AI client result:\n${formatVerboseValue(result)}`);
 
 		throwIfAborted(abortSignal, 'Inference cancelled');
 
@@ -118,8 +135,10 @@ export async function generateQuery(
 		const sql = result.sql;
 
 		if (!isReadOnlyQuery(sql)) {
+			verboseLog('Read-only validation rejected the generated SQL');
 			return {error: 'Only SELECT queries are allowed', sql};
 		}
+		verboseLog('Read-only validation passed');
 
 		return {error: null, sql};
 	} catch (error) {
@@ -127,6 +146,9 @@ export async function generateQuery(
 			log('Inference cancelled');
 			return {cancelled: true, error: null, sql: null};
 		}
+		verboseLog(
+			`Unhandled generation exception:\n${error.stack || error.message}`,
+		);
 
 		return {
 			error: error.message || 'Unexpected error while generating SQL',
@@ -139,14 +161,29 @@ export async function executeQuery(
 	sqlQuery,
 	connectionString,
 	schema,
-	openRouterKey,
-	model,
+	aiConfig,
 	onLog,
 	abortSignal,
 ) {
-	const log = message => onLog?.(message);
+	const redactDatabaseSecrets = value =>
+		redactConnectionDetails(value, connectionString);
+	const log = message => onLog?.(redactDatabaseSecrets(message));
+	const verboseLog = messageOrFactory => {
+		if (!aiConfig?.verbose) return;
+		const message =
+			typeof messageOrFactory === 'function'
+				? messageOrFactory()
+				: messageOrFactory;
+		log(`[Verbose][Query] ${message}`);
+	};
+	verboseLog(`Provider: ${aiConfig?.provider || 'unavailable'}`);
+	verboseLog(`Model: ${aiConfig?.model || 'unavailable'}`);
+	verboseLog(`Connection target: ${redactConnectionString(connectionString)}`);
+	verboseLog(`Initial SQL:\n${sqlQuery}`);
+	verboseLog(() => `Schema:\n${formatVerboseValue(schema)}`);
 
 	if (!isReadOnlyQuery(sqlQuery)) {
+		verboseLog('Read-only validation rejected the initial SQL');
 		return {
 			error: 'Only SELECT queries are allowed',
 			sql: sqlQuery,
@@ -157,26 +194,48 @@ export async function executeQuery(
 	const maxRetries = 3;
 	let currentSql = sqlQuery;
 	let lastError = null;
-	const aiClient = createOpenRouterClient(openRouterKey, model, log);
+	let aiClient = null;
 
 	for (let attempt = 1; attempt <= maxRetries; attempt++) {
 		let conn;
+		const attemptStartedAt = Date.now();
 		try {
 			throwIfAborted(abortSignal, 'Query execution cancelled');
+			verboseLog(`Starting attempt ${attempt}/${maxRetries}`);
 
 			if (attempt > 1) {
+				if (!aiConfig?.available) {
+					return {
+						error: `Query failed: ${lastError}. Automatic repair unavailable: ${aiConfig?.unavailableMessage || 'AI provider is unavailable'}`,
+						sql: currentSql,
+						data: null,
+					};
+				}
+
 				log(`Attempt ${attempt}/${maxRetries}: Fixing SQL...`);
+				try {
+					aiClient ||= createAIClient(aiConfig, log);
+				} catch (error) {
+					return {
+						error: `Query failed: ${lastError}. Automatic repair unavailable: ${error.message}`,
+						sql: currentSql,
+						data: null,
+					};
+				}
+
 				const result = await aiClient.fixSQL(
 					currentSql,
 					lastError,
 					schema,
 					abortSignal,
 				);
+				verboseLog(() => `SQL repair result:\n${formatVerboseValue(result)}`);
 				if (result.error) {
 					return {error: result.error, sql: currentSql, data: null};
 				}
 
 				currentSql = result.sql;
+				verboseLog(`Repaired SQL:\n${currentSql}`);
 
 				if (!isReadOnlyQuery(currentSql)) {
 					return {
@@ -188,18 +247,29 @@ export async function executeQuery(
 			}
 
 			conn = await createConnection(connectionString);
+			verboseLog(`Database connection opened for attempt ${attempt}`);
 			throwIfAborted(abortSignal, 'Query execution cancelled');
 
 			log('Executing query...');
+			verboseLog(`Executing SQL:\n${currentSql}`);
 			const data = await conn.query(currentSql, {abortSignal});
 			throwIfAborted(abortSignal, 'Query execution cancelled');
 			const rows = [...data];
 			log(`Query returned ${rows.length} rows`);
+			verboseLog(
+				`Attempt ${attempt} completed in ${Date.now() - attemptStartedAt}ms`,
+			);
+			verboseLog(
+				`Result columns: ${rows.length > 0 ? Object.keys(rows[0]).join(', ') : '<none>'}`,
+			);
+			verboseLog(() => `Result data:\n${formatVerboseValue(rows)}`);
 			await conn.close();
+			verboseLog('Database connection closed');
 			return {error: null, sql: currentSql, data: rows};
 		} catch (error) {
 			if (conn) {
 				await conn.close().catch(() => {});
+				verboseLog('Database connection closed after an error');
 			}
 
 			if (isAbortError(error)) {
@@ -209,14 +279,15 @@ export async function executeQuery(
 
 			if (!conn) {
 				return {
-					error: `Failed to connect: ${error.message}`,
+					error: `Failed to connect: ${redactDatabaseSecrets(error.message)}`,
 					sql: currentSql,
 					data: null,
 				};
 			}
 
-			lastError = error.message;
+			lastError = redactDatabaseSecrets(error.message);
 			log(`Query error: ${lastError}`);
+			verboseLog(`Attempt exception:\n${error.stack || error.message}`);
 			if (attempt === maxRetries) {
 				return {
 					error: `Query failed after ${maxRetries} attempts: ${lastError}`,
@@ -244,4 +315,42 @@ function isReadOnlyQuery(sql) {
 	if (MUTATION_KEYWORD_RE.test(sql)) return false;
 
 	return normalized.startsWith('SELECT') || normalized.startsWith('WITH');
+}
+
+function redactConnectionString(connectionString) {
+	return String(connectionString).replace(
+		/^((?:postgres(?:ql)?|mysql2?):\/\/)[^@]+@/i,
+		'$1<credentials>@',
+	);
+}
+
+function redactConnectionDetails(value, connectionString) {
+	const output = String(value);
+	const rawConnectionString = String(connectionString || '');
+	if (!rawConnectionString) return output;
+
+	return output
+		.split(rawConnectionString)
+		.join(redactConnectionString(rawConnectionString))
+		.replace(
+			/((?:postgres(?:ql)?|mysql2?):\/\/)[^@\s]+@/gi,
+			'$1<credentials>@',
+		);
+}
+
+function formatVerboseValue(value, maxLength = 20_000) {
+	let output;
+	try {
+		output = JSON.stringify(
+			value,
+			(_key, item) => (typeof item === 'bigint' ? item.toString() : item),
+			2,
+		);
+	} catch (error) {
+		return `<unable to serialize: ${error.message}>`;
+	}
+
+	if (output === undefined) return String(value);
+	if (output.length <= maxLength) return output;
+	return `${output.slice(0, maxLength)}\n… truncated ${output.length - maxLength} characters`;
 }

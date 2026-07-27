@@ -268,13 +268,15 @@ const renderTopbar = () => {
 		: '<span class="muted">No source selected</span>';
 
 	const model = state.status?.model;
+	const provider = state.status?.provider;
 	el.topbarMeta.innerHTML = [
 		model
-			? `<span class="tag" title="Model used for SQL generation">${escapeHtml(model)}</span>`
+			? `<span class="tag" title="Model used for SQL generation">${escapeHtml(provider ? `${provider} / ${model}` : model)}</span>`
 			: '',
-		state.status && !state.status.hasApiKey
-			? '<span class="tag tag-warn">No API key</span>'
+		state.status && !state.status.available
+			? '<span class="tag tag-warn">AI unavailable</span>'
 			: '',
+		state.status?.verbose ? '<span class="tag tag-warn">Verbose</span>' : '',
 		state.status?.configDir
 			? `<span class="tag tag-quiet" title="${escapeHtml(state.status.configDir)}">Local config</span>`
 			: '',
@@ -448,9 +450,9 @@ const renderSchema = () => {
 const renderBanner = () => {
 	const messages = [];
 
-	if (state.status && !state.status.hasApiKey) {
+	if (state.status && !state.status.available) {
 		messages.push(
-			'<div class="notice">Set <code>OPENROUTER_KEY</code> to generate SQL from questions. You can still write and run SQL by hand.</div>',
+			`<div class="notice">${escapeHtml(state.status.unavailableMessage)}. You can still write and run SQL by hand.</div>`,
 		);
 	}
 
@@ -465,7 +467,7 @@ const renderBanner = () => {
 
 const renderComposer = () => {
 	const ready = Boolean(state.selectedSourceId);
-	const canGenerate = ready && state.status?.hasApiKey !== false;
+	const canGenerate = ready && state.status?.available !== false;
 	const onboarding = state.status !== null && state.sources.length === 0;
 
 	el.onboarding.hidden = !onboarding;
@@ -608,7 +610,7 @@ const renderActivity = () => {
 	}
 
 	el.activity.innerHTML = `
-		<details class="activity">
+		<details class="activity" ${state.status?.verbose ? 'open' : ''}>
 			<summary>Activity<span class="rail-count">${state.logs.length}</span></summary>
 			<div class="timeline">${state.logs.map(log => `<div>${escapeHtml(log)}</div>`).join('')}</div>
 		</details>
@@ -760,7 +762,14 @@ const generateSql = async event => {
 				history: state.messages.slice(-10),
 			}),
 		});
-		if (result.error) throw new Error(result.error);
+		if (result.error) {
+			setState({
+				error: result.error,
+				logs: result.logs || [],
+				busy: null,
+			});
+			return;
+		}
 
 		setState({
 			pendingSql: result.sql || '',
@@ -784,21 +793,26 @@ const executeSql = async () => {
 	const sql = state.pendingSql.trim();
 	if (!sql || !state.selectedSourceId || isBusy()) return;
 
+	const generationLogs = state.logs;
 	startElapsed();
-	setState({busy: 'run', error: '', logs: [], results: null});
+	setState({busy: 'run', error: '', results: null});
 	try {
 		const result = await api('/api/query/execute', {
 			method: 'POST',
 			body: JSON.stringify({sourceId: state.selectedSourceId, sql}),
 		});
-		if (result.error) throw new Error(result.error);
+		const logs = [...generationLogs, ...(result.logs || [])];
+		if (result.error) {
+			setState({error: result.error, logs, busy: null});
+			return;
+		}
 
 		const finalSql = result.sql || sql;
 		setState({
 			pendingSql: finalSql,
 			resultsSql: finalSql,
 			results: result.data || [],
-			logs: result.logs || [],
+			logs,
 			messages: [...state.messages, {role: 'assistant', content: finalSql}],
 			turns: state.turns.map((turn, index) =>
 				index === 0 ? {...turn, sql: finalSql} : turn,

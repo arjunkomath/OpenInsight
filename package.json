@@ -24,6 +24,7 @@
 		"sqlite",
 		"natural-language",
 		"openrouter",
+		"claude",
 		"gemini",
 		"opentui",
 		"bun"
