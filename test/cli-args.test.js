@@ -3,10 +3,12 @@ import {spawn} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {parseCliArgs} from '../source/utils/cli-args.js';
+import {getLogDir} from '../source/utils/Logger.js';
 
-const repositoryDir = new URL('..', import.meta.url).pathname;
-const cliPath = new URL('../source/cli.js', import.meta.url).pathname;
+const repositoryDir = fileURLToPath(new URL('..', import.meta.url));
+const cliPath = fileURLToPath(new URL('../source/cli.js', import.meta.url));
 
 const runCli = (args, {cwd = repositoryDir, env = process.env} = {}) =>
 	new Promise((resolve, reject) => {
@@ -43,21 +45,20 @@ test('paths prints the platform log directory and exits 0', async () => {
 	mkdirSync(join(directory, '.openinsight'));
 
 	try {
+		const env = {...process.env, XDG_STATE_HOME: join(directory, 'state')};
 		const {code, stdout, stderr} = await runCli(['paths'], {
 			cwd: directory,
-			env: {...process.env, XDG_STATE_HOME: join(directory, 'state')},
+			env,
 		});
 		expect(code).toBe(0);
-		expect(stdout).toContain(
-			`Logs: ${join(directory, 'state', 'openinsight')}`,
-		);
+		expect(stdout).toContain(`Logs: ${getLogDir({env})}`);
 		expect(stdout).toContain(`Config: ${join(directory, '.openinsight')}`);
 		expect(stderr).toBe('');
 
 		rmSync(join(directory, '.openinsight'), {recursive: true});
 		const withoutConfig = await runCli(['paths'], {
 			cwd: directory,
-			env: {...process.env, XDG_STATE_HOME: join(directory, 'state')},
+			env,
 		});
 		expect(withoutConfig.code).toBe(0);
 		expect(withoutConfig.stdout).not.toContain('Config:');

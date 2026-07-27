@@ -1,4 +1,3 @@
-import {join} from 'node:path';
 import process from 'node:process';
 import appJs from './client/app.js' with {type: 'text'};
 import faviconSvg from './client/favicon.svg' with {type: 'text'};
@@ -11,6 +10,7 @@ import {
 	getDataSource,
 	loadDataSources,
 	loadPresets,
+	getConfigDir,
 	removeDataSource,
 	removePreset,
 	savePreset,
@@ -92,7 +92,7 @@ const routeApi = async (request, url) => {
 	if (url.pathname === '/api/status' && request.method === 'GET') {
 		return json({
 			...publicAIStatus(configuredAI),
-			configDir: join(process.cwd(), '.openinsight'),
+			configDir: getConfigDir(),
 		});
 	}
 
@@ -285,7 +285,7 @@ export function startWebServer({
 	const url = `http://${reachableHost}:${server.port}`;
 
 	console.log(`OpenInsight web running at ${url}`);
-	console.log(`Config: ${join(process.cwd(), '.openinsight')}`);
+	console.log(`Config: ${getConfigDir()}`);
 
 	if (open) openInBrowser(url);
 

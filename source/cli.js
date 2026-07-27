@@ -68,12 +68,18 @@ if (flags.log) {
 		fileLogger = createFileLogger({
 			provider: aiConfig.provider,
 			model: aiConfig.model,
+			onError: error =>
+				console.warn(`OpenInsight: File logging disabled: ${error.message}`),
 		});
 	} catch (error) {
-		console.error(
-			`OpenInsight: Failed to initialize logging: ${error.message}`,
+		console.warn(
+			`OpenInsight: File logging unavailable; continuing without it: ${error.message}`,
 		);
-		process.exit(1);
+		aiConfig = {
+			...aiConfig,
+			diagnostics: flags.verbose,
+			logging: false,
+		};
 	}
 }
 
